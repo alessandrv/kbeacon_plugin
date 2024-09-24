@@ -15,6 +15,11 @@ import android.os.Looper;
 import android.util.Log;
 import androidx.core.app.ActivityCompat;
 
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+import org.greenrobot.eventbus.ThreadMode;
+import com.espressif.provisioning.DeviceConnectionEvent;
+
 import com.espressif.provisioning.ESPConstants;
 import com.espressif.provisioning.ESPDevice;
 import com.espressif.provisioning.ESPProvisionManager;
@@ -237,104 +242,151 @@ public class KbeaconPlugin implements FlutterPlugin, MethodChannel.MethodCallHan
     private void stopBleScan() {
         espProvisionManager.stopBleScan();
     }
+private void scanWifiNetworks(String deviceName, String proofOfPossession, MethodChannel.Result result) {
+    BluetoothDevice device = bleDevices.get(deviceName);
+    String serviceUuid = bleDeviceServiceUuids.get(deviceName);
 
-    private void scanWifiNetworks(String deviceName, String proofOfPossession, MethodChannel.Result result) {
-        BluetoothDevice device = bleDevices.get(deviceName);
-        String serviceUuid = bleDeviceServiceUuids.get(deviceName);
-
-        if (device == null || serviceUuid == null) {
-            result.error("DEVICE_NOT_FOUND", "Device not found", null);
-            return;
-        }
-
-        ESPDevice espDevice = espProvisionManager.createESPDevice(ESPConstants.TransportType.TRANSPORT_BLE, ESPConstants.SecurityType.SECURITY_1);
-        espDevice.connectBLEDevice(device, serviceUuid);
-
-        // Use the setter method instead of direct access
-        espDevice.setProofOfPossession(proofOfPossession);
-
-        espDevice.scanNetworks(new WiFiScanListener() {
-            @Override
-            public void onWifiListReceived(ArrayList<com.espressif.provisioning.WiFiAccessPoint> wifiList) {
-                List<String> ssidList = new ArrayList<>();
-                for (com.espressif.provisioning.WiFiAccessPoint ap : wifiList) {
-                    ssidList.add(ap.getWifiName());
-                }
-                result.success(ssidList);
-                espDevice.disconnectDevice();
-            }
-
-            @Override
-            public void onWiFiScanFailed(Exception e) {
-                result.error("WIFI_SCAN_FAILED", "Wi-Fi scan failed", e.getMessage());
-                espDevice.disconnectDevice();
-            }
-        });
+    if (device == null || serviceUuid == null) {
+        result.error("DEVICE_NOT_FOUND", "Device not found", null);
+        return;
     }
 
-    private void provisionWifi(String deviceName, String proofOfPossession, String ssid, String passphrase, MethodChannel.Result result) {
-        BluetoothDevice device = bleDevices.get(deviceName);
-        String serviceUuid = bleDeviceServiceUuids.get(deviceName);
+    ESPDevice espDevice = espProvisionManager.createESPDevice(ESPConstants.TransportType.TRANSPORT_BLE, ESPConstants.SecurityType.SECURITY_1);
 
-        if (device == null || serviceUuid == null) {
-            result.error("DEVICE_NOT_FOUND", "Device not found", null);
-            return;
+    // Create an event subscriber
+    Object eventSubscriber = new Object() {
+        @Subscribe(threadMode = ThreadMode.MAIN)
+        public void onEvent(DeviceConnectionEvent event) {
+            if (event.getEventType() == ESPConstants.EVENT_DEVICE_CONNECTED) {
+                // Unregister the subscriber
+                EventBus.getDefault().unregister(this);
+
+                // Set the proof of possession
+                espDevice.setProofOfPossession(proofOfPossession);
+
+                // Now that the device is connected, scan for Wi-Fi networks
+                espDevice.scanNetworks(new WiFiScanListener() {
+                    @Override
+                    public void onWifiListReceived(ArrayList<com.espressif.provisioning.WiFiAccessPoint> wifiList) {
+                        List<String> ssidList = new ArrayList<>();
+                        for (com.espressif.provisioning.WiFiAccessPoint ap : wifiList) {
+                            ssidList.add(ap.getWifiName());
+                        }
+                        result.success(ssidList);
+                        espDevice.disconnectDevice();
+                    }
+
+                    @Override
+                    public void onWiFiScanFailed(Exception e) {
+                        result.error("WIFI_SCAN_FAILED", "Wi-Fi scan failed", e.getMessage());
+                        espDevice.disconnectDevice();
+                    }
+                });
+            } else if (event.getEventType() == ESPConstants.EVENT_DEVICE_DISCONNECTED) {
+                EventBus.getDefault().unregister(this);
+                result.error("DEVICE_DISCONNECTED", "Device disconnected", null);
+            } else if (event.getEventType() == ESPConstants.EVENT_DEVICE_CONNECTION_FAILED) {
+                EventBus.getDefault().unregister(this);
+                result.error("CONNECTION_FAILED", "Failed to connect to device", null);
+            }
         }
+    };
 
-        ESPDevice espDevice = espProvisionManager.createESPDevice(ESPConstants.TransportType.TRANSPORT_BLE, ESPConstants.SecurityType.SECURITY_1);
-        espDevice.connectBLEDevice(device, serviceUuid);
+    // Register the event subscriber
+    EventBus.getDefault().register(eventSubscriber);
 
-        // Use the setter method instead of direct access
-        espDevice.setProofOfPossession(proofOfPossession);
+    // Start the connection
+    espDevice.connectBLEDevice(device, serviceUuid);
+}
 
-        espDevice.provision(ssid, passphrase, new ProvisionListener() {
-            @Override
-            public void createSessionFailed(Exception e) {
-                result.error("SESSION_FAILED", "Session creation failed", e.getMessage());
-                espDevice.disconnectDevice();
-            }
 
-            @Override
-            public void wifiConfigSent() {
-                // Wi-Fi config sent
-            }
+  private void provisionWifi(String deviceName, String proofOfPossession, String ssid, String passphrase, MethodChannel.Result result) {
+    BluetoothDevice device = bleDevices.get(deviceName);
+    String serviceUuid = bleDeviceServiceUuids.get(deviceName);
 
-            @Override
-            public void wifiConfigFailed(Exception e) {
-                result.error("CONFIG_FAILED", "Wi-Fi config failed", e.getMessage());
-                espDevice.disconnectDevice();
-            }
-
-            @Override
-            public void wifiConfigApplied() {
-                // Wi-Fi config applied
-            }
-
-            @Override
-            public void wifiConfigApplyFailed(Exception e) {
-                result.error("APPLY_FAILED", "Wi-Fi config apply failed", e.getMessage());
-                espDevice.disconnectDevice();
-            }
-
-            @Override
-            public void provisioningFailedFromDevice(ESPConstants.ProvisionFailureReason failureReason) {
-                result.error("PROVISION_FAILED", "Provisioning failed from device", failureReason.toString());
-                espDevice.disconnectDevice();
-            }
-
-            @Override
-            public void deviceProvisioningSuccess() {
-                result.success(true);
-                espDevice.disconnectDevice();
-            }
-
-            @Override
-            public void onProvisioningFailed(Exception e) {
-                result.error("PROVISION_FAILED", "Provisioning failed", e.getMessage());
-                espDevice.disconnectDevice();
-            }
-        });
+    if (device == null || serviceUuid == null) {
+        result.error("DEVICE_NOT_FOUND", "Device not found", null);
+        return;
     }
+
+    ESPDevice espDevice = espProvisionManager.createESPDevice(ESPConstants.TransportType.TRANSPORT_BLE, ESPConstants.SecurityType.SECURITY_1);
+
+    // Create an event subscriber
+    Object eventSubscriber = new Object() {
+        @Subscribe(threadMode = ThreadMode.MAIN)
+        public void onEvent(DeviceConnectionEvent event) {
+            if (event.getEventType() == ESPConstants.EVENT_DEVICE_CONNECTED) {
+                // Unregister the subscriber
+                EventBus.getDefault().unregister(this);
+
+                // Set the proof of possession
+                espDevice.setProofOfPossession(proofOfPossession);
+
+                // Now that the device is connected, proceed with provisioning
+                espDevice.provision(ssid, passphrase, new ProvisionListener() {
+                    @Override
+                    public void createSessionFailed(Exception e) {
+                        result.error("SESSION_FAILED", "Session creation failed", e.getMessage());
+                        espDevice.disconnectDevice();
+                    }
+
+                    @Override
+                    public void wifiConfigSent() {
+                        // Wi-Fi config sent
+                    }
+
+                    @Override
+                    public void wifiConfigFailed(Exception e) {
+                        result.error("CONFIG_FAILED", "Wi-Fi config failed", e.getMessage());
+                        espDevice.disconnectDevice();
+                    }
+
+                    @Override
+                    public void wifiConfigApplied() {
+                        // Wi-Fi config applied
+                    }
+
+                    @Override
+                    public void wifiConfigApplyFailed(Exception e) {
+                        result.error("APPLY_FAILED", "Wi-Fi config apply failed", e.getMessage());
+                        espDevice.disconnectDevice();
+                    }
+
+                    @Override
+                    public void provisioningFailedFromDevice(ESPConstants.ProvisionFailureReason failureReason) {
+                        result.error("PROVISION_FAILED", "Provisioning failed from device", failureReason.toString());
+                        espDevice.disconnectDevice();
+                    }
+
+                    @Override
+                    public void deviceProvisioningSuccess() {
+                        result.success(true);
+                        espDevice.disconnectDevice();
+                    }
+
+                    @Override
+                    public void onProvisioningFailed(Exception e) {
+                        result.error("PROVISION_FAILED", "Provisioning failed", e.getMessage());
+                        espDevice.disconnectDevice();
+                    }
+                });
+            } else if (event.getEventType() == ESPConstants.EVENT_DEVICE_DISCONNECTED) {
+                EventBus.getDefault().unregister(this);
+                result.error("DEVICE_DISCONNECTED", "Device disconnected", null);
+            } else if (event.getEventType() == ESPConstants.EVENT_DEVICE_CONNECTION_FAILED) {
+                EventBus.getDefault().unregister(this);
+                result.error("CONNECTION_FAILED", "Failed to connect to device", null);
+            }
+        }
+    };
+
+    // Register the event subscriber
+    EventBus.getDefault().register(eventSubscriber);
+
+    // Start the connection
+    espDevice.connectBLEDevice(device, serviceUuid);
+}
+
 
     // KBeacon Methods
     private void startKBeaconScan(MethodChannel.Result result) {

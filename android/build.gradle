@@ -52,6 +52,7 @@ android {
 dependencies {
     api  'com.kkmcn.kbeaconlib2:kbeaconlib2:1.2.9'
      implementation 'com.github.espressif:esp-idf-provisioning-android:lib-2.2.1'
+    implementation 'org.greenrobot:eventbus:3.2.0'
 
     implementation 'androidx.annotation:annotation:1.1.0'
 
