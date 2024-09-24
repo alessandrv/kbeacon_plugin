@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:kbeacon_plugin/kbeacon_plugin.dart';
 import 'dart:async';
+
 void main() {
   runApp(const MyApp());
 }
@@ -32,17 +33,20 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _beacons = [];
   String _error = '';
   String _bleState = '';
+  bool _isScanning = false; // Add a variable to track scanning state
   final _kbeaconPlugin = KbeaconPlugin();
   final Duration beaconTimeout = Duration(seconds: 10);  // Timeout after 10 seconds of inactivity
 
   @override
   void initState() {
     super.initState();
-    _startScanning();
     _startBeaconCleanup();  // Start the cleanup timer
   }
 
   void _startScanning() async {
+    setState(() {
+      _isScanning = true;  // Set scanning state to true
+    });
     await _kbeaconPlugin.startScan();
     _kbeaconPlugin.listenToScanResults(
       (List<String> beacons) {
@@ -53,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
       (String errorMessage) {
         setState(() {
           _error = errorMessage;
+          _isScanning = false;  // Stop scanning if an error occurs
         });
       },
       (String bleState) {
@@ -169,6 +174,10 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.all(8.0),
               child: Text('Error: $_error', style: const TextStyle(color: Colors.red)),
             ),
+          ElevatedButton(
+            onPressed: _isScanning ? null : _startScanning,  // Disable button if scanning is in progress
+            child: Text(_isScanning ? 'Scanning...' : 'Start Scan'),
+          ),
           Expanded(
             child: ListView.builder(
               itemCount: _beacons.length,
