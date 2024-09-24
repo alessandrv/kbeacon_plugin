@@ -142,7 +142,28 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
+void provisionDeviceWifi() async {
+  KbeaconPlugin kbeaconPlugin = KbeaconPlugin();
 
+  String deviceName = 'YourDeviceName'; // Replace with the actual device name
+  String proofOfPossession = 'YourProofOfPossession'; // Replace with the actual PoP
+  String ssid = 'YourSSID'; // Replace with the Wi-Fi SSID
+  String passphrase = 'YourPassphrase'; // Replace with the Wi-Fi password
+
+  try {
+    bool success = await kbeaconPlugin.provisionWifi(deviceName, proofOfPossession, ssid, passphrase);
+    if (success) {
+      print('Provisioning successful');
+      // Handle successful provisioning (e.g., navigate to another screen)
+    } else {
+      print('Provisioning failed');
+      // Handle provisioning failure
+    }
+  } catch (e) {
+    print('Error during provisioning: $e');
+    // Handle exception
+  }
+}
   void _changeDeviceName(String macAddress, String newName) async {
     try {
       await _kbeaconPlugin.changeDeviceName(newName);

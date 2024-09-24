@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 
 class KbeaconPlugin {
   static const MethodChannel _channel = MethodChannel('kbeacon_plugin');
+  static const EventChannel _eventChannel = EventChannel('flutter_esp_ble_prov/scanBleDevices');
 
   // ESP BLE Provisioning Methods
   Future<void> scanBleDevices(String prefix) async {
@@ -11,13 +12,19 @@ class KbeaconPlugin {
       throw 'Failed to scan BLE devices: ${e.message}';
     }
   }
+    Stream<String>? _bleScanStream;
 
-  Future<void> scanWifiNetworks(String deviceName, String proofOfPossession) async {
+ Stream<String> scanBleDevicesAsStream(String prefix) {
+    _bleScanStream ??= _eventChannel.receiveBroadcastStream(prefix).map((event) => event.toString());
+    return _bleScanStream!;
+  }
+  Future<List<String>> scanWifiNetworks(String deviceName, String proofOfPossession) async {
     try {
-      await _channel.invokeMethod('scanWifiNetworks', {
+      final List<dynamic> networks = await _channel.invokeMethod('scanWifiNetworks', {
         'deviceName': deviceName,
         'proofOfPossession': proofOfPossession,
       });
+      return networks.cast<String>();
     } on PlatformException catch (e) {
       throw 'Failed to scan Wi-Fi networks: ${e.message}';
     }
