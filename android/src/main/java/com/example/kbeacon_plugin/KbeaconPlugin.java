@@ -151,6 +151,9 @@ public class KbeaconPlugin implements FlutterPlugin, MethodChannel.MethodCallHan
                 String newName = call.argument("newName");
                 changeKBeaconDeviceName(newName, result);
                 break;
+            case "disconnectDevice":
+                disconnectFromKBeaconDevice(result);
+                break;
             default:
                 result.notImplemented();
                 break;
@@ -395,6 +398,16 @@ private void scanWifiNetworks(String deviceName, String proofOfPossession, Metho
             result.success("Scan started successfully");
         } else {
             result.error("SCAN_FAILED", "Failed to start scanning", null);
+        }
+    }
+
+    private void disconnectFromKBeaconDevice(MethodChannel.Result result) {
+        if (connectedBeacon != null && connectedBeacon.isConnected()) {
+            connectedBeacon.disconnect();
+            connectedBeacon = null;
+            result.success("Device disconnected");
+        } else {
+            result.error("NO_CONNECTED_DEVICE", "No device is connected", null);
         }
     }
 

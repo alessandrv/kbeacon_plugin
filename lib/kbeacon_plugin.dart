@@ -12,11 +12,24 @@ class KbeaconPlugin {
       throw 'Failed to scan BLE devices: ${e.message}';
     }
   }
-    Stream<String>? _bleScanStream;
+    Future<void> disconnectDevice() async {
+    try {
+      await _channel.invokeMethod('disconnectDevice');
+    } catch (e) {
+      throw Exception('Failed to disconnect device: $e');
+    }
+  }
+Stream<String> scanBleDevicesAsStream(String prefix) {
+  return _eventChannel.receiveBroadcastStream(prefix).map((event) => event.toString());
+}
 
- Stream<String> scanBleDevicesAsStream(String prefix) {
-    _bleScanStream ??= _eventChannel.receiveBroadcastStream(prefix).map((event) => event.toString());
-    return _bleScanStream!;
+  // Call the method to ring the device
+  static Future<void> ringDevice() async {
+    try {
+      await _channel.invokeMethod('ringDevice');
+    } on PlatformException catch (e) {
+      print("Failed to ring device: ${e.message}");
+    }
   }
   Future<List<String>> scanWifiNetworks(String deviceName, String proofOfPossession) async {
     try {
