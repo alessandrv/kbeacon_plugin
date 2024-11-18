@@ -2,6 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+<key>NSBluetoothAlwaysUsageDescription</key>
+<string>We use Bluetooth to connect to KBeacon devices.</string>
+<key>NSBluetoothPeripheralUsageDescription</key>
+<string>We use Bluetooth to communicate with peripherals.</string>
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>Location access is required for Bluetooth scanning.</string>
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>Location access is required for Bluetooth scanning.</string>
+
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

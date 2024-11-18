@@ -181,9 +181,7 @@ public class KbeaconPlugin implements FlutterPlugin, MethodChannel.MethodCallHan
             case "disconnectDevice":
                 disconnectFromKBeaconDevice(result);
                 break;
-              case "checkAdvertisingMessages":
-            checkAdvertisingMessages();
-            break;
+           
             default:
                 result.notImplemented();
                 break;
@@ -200,117 +198,6 @@ public class KbeaconPlugin implements FlutterPlugin, MethodChannel.MethodCallHan
     }
     return sb.toString();
 }
-
-@SuppressLint("MissingPermission")
-private void checkAdvertisingMessages() {
-    // Get BluetoothManager and BluetoothAdapter
-    BluetoothManager bluetoothManager = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
-    if (bluetoothManager == null) {
-        Log.e(TAG, "BluetoothManager is not available.");
-        return;
-    }
-
-    BluetoothAdapter bluetoothAdapter = bluetoothManager.getAdapter();
-    if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
-        Log.e(TAG, "Bluetooth is not enabled or available.");
-        return;
-    }
-
-    // Get the BLE scanner
-    BluetoothLeScanner scanner = bluetoothAdapter.getBluetoothLeScanner();
-    if (scanner == null) {
-        Log.e(TAG, "BluetoothLeScanner is not available.");
-        return;
-    }
-
-    // Define scan settings
-    ScanSettings settings = new ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY) // High scanning frequency
-            .build();
-
-    // Start scanning for BLE devices
-    scanner.startScan(null, settings, new ScanCallback() {
-        @Override
-        public void onScanResult(int callbackType, ScanResult result) {
-            if (result != null && result.getScanRecord() != null) {
-                // Extract the scan record
-                ScanRecord scanRecord = result.getScanRecord();
-
-                // Define the desired UUID (0x2080 converted to 128-bit UUID)
-                UUID desiredUuid = UUID.fromString("00002080-0000-1000-8000-00805F9B34FB");
-
-                // Check if the desired UUID is present
-                List<ParcelUuid> serviceUuids = scanRecord.getServiceUuids();
-                boolean hasDesiredUuid = false;
-
-                if (serviceUuids != null) {
-                    for (ParcelUuid uuid : serviceUuids) {
-                        if (uuid.getUuid().equals(desiredUuid)) {
-                            hasDesiredUuid = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (!hasDesiredUuid) {
-                    // Device does not have the desired service UUID, skip processing
-                    return;
-                }
-
-                // Proceed with processing the device
-                // Log the raw bytes of the scan record
-                byte[] scanRecordBytes = scanRecord.getBytes();
-                Log.d(TAG, "Raw ScanRecord bytes: " + bytesToHex(scanRecordBytes));
-
-                // Extract and log service data
-                Map<ParcelUuid, byte[]> serviceDataMap = scanRecord.getServiceData();
-                if (serviceDataMap != null && !serviceDataMap.isEmpty()) {
-                    for (Map.Entry<ParcelUuid, byte[]> entry : serviceDataMap.entrySet()) {
-                        ParcelUuid uuid = entry.getKey();
-                        byte[] serviceData = entry.getValue();
-                        String asciiData = new String(serviceData, StandardCharsets.UTF_8);
-                        Log.d(TAG, "Service Data UUID: " + uuid.toString() + ", Data: " + asciiData + ", Hex: " + bytesToHex(serviceData));
-                    }
-                } else {
-                    Log.d(TAG, "No Service Data found");
-                }
-
-                // Log the device name and RSSI
-                String deviceName = result.getDevice().getName();
-                int rssi = result.getRssi();
-                Log.d(TAG, "Device: " + (deviceName == null ? "Unknown" : deviceName) + ", RSSI: " + rssi);
-
-                // Optionally, send all data to Flutter for further inspection
-                String message = "Device: " + (deviceName == null ? "Unknown" : deviceName)
-                        + ", RSSI: " + rssi
-                        + ", ScanRecord: " + bytesToHex(scanRecordBytes);
-                if (bleScanEventSink != null) {
-                    bleScanEventSink.success(message);
-                }
-            } else {
-                Log.w(TAG, "Scan result or scan record is null.");
-            }
-        }
-
-        @Override
-        public void onBatchScanResults(List<ScanResult> results) {
-            for (ScanResult result : results) {
-                onScanResult(ScanSettings.CALLBACK_TYPE_ALL_MATCHES, result);
-            }
-        }
-
-        @Override
-        public void onScanFailed(int errorCode) {
-            Log.e(TAG, "BLE scan failed with error code: " + errorCode);
-
-            // Notify Flutter of the error
-            if (bleScanEventSink != null) {
-                bleScanEventSink.error("SCAN_FAILED", "BLE scan failed with error code " + errorCode, null);
-            }
-        }
-    });
-}
-
 
 
 
