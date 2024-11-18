@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:kbeacon_plugin_example/screens/FiglioLogScreen.dart';
+import 'package:kbeacon_plugin_example/screens/FiglioScreen.dart';
 import 'package:salomon_bottom_bar/salomon_bottom_bar.dart';
 import './ConfiguraPadreScreen.dart'; // Import the ConfiguraPadreScreen
 import 'BeaconScreen.dart'; // Import BeaconScreen
@@ -18,12 +20,13 @@ class _HomeScreenState extends State<HomeScreen> {
   final PageController _pageController = PageController();
 
   // List of screens for each tab
-  final List<Widget> _screens = [
-    const ConfiguraPadreScreen(), // For "Configura Padre"
-    const BeaconScreen(), // For "Concorrente"
-    const PlaceholderScreen(), // Placeholder screen for "Search"
-    const ImpostazioniScreen(), // For "Impostazioni"
-  ];
+final List<Widget> _screens = [
+  const ConfiguraPadreScreen(),
+  const BeaconScreen(),
+  const FiglioScreen(),            // Removed 'const' here
+  const ImpostazioniScreen(),
+];
+
 
   @override
   void dispose() {

@@ -4,7 +4,24 @@ class KbeaconPlugin {
   static const MethodChannel _channel = MethodChannel('kbeacon_plugin');
   static const EventChannel _eventChannel = EventChannel('flutter_esp_ble_prov/scanBleDevices');
 
+ // New method to start scanning for advertising messages
+  Future<void> checkAdvertisingMessages() async {
+    try {
+      await _channel.invokeMethod('checkAdvertisingMessages');
+    } on PlatformException catch (e) {
+      throw 'Failed to check advertising messages: ${e.message}';
+    }
+  }
+
+  // Stream of advertising messages
+  Stream<String> listenToAdvertisingMessages() {
+    return _eventChannel
+        .receiveBroadcastStream()
+        .map((event) => event.toString());
+  }
   // ESP BLE Provisioning Methods
+
+@pragma('vm:entry-point')
   Future<void> scanBleDevices(String prefix) async {
     try {
       await _channel.invokeMethod('scanBleDevices', {'prefix': prefix});

@@ -26,13 +26,12 @@ class _BeaconSelectionScreenState extends State<BeaconSelectionScreen> {
   // Add MobileScannerController
   final MobileScannerController scannerController = MobileScannerController();
 
-  @override
   void initState() {
+
     super.initState();
     _startScanning();
     _startBeaconCleanup();
   }
-
   void _startScanning() async {
     await _kbeaconPlugin.startScan();
     _kbeaconPlugin.listenToScanResults(
@@ -454,10 +453,17 @@ Widget _buildBeaconCard(String macAddress) {
   final name = beaconData?["name"] ?? "Unknown";
   final rssi = beaconData?["rssi"] ?? "N/A";
 
-  String displayName = name.length > 3 ? name.substring(name.length - 3) : name;
-  displayName = displayName.replaceFirst(RegExp(r'^0+'), '');
-  if (displayName.isEmpty) {
-    displayName = "0";
+  String displayName;
+  if (name.startsWith('macchina_')) {
+    // Extract the last 3 characters of the name after "macchina_"
+    displayName = name.substring('macchina_'.length);
+    displayName = displayName.replaceFirst(RegExp(r'^0+'), ''); // Remove leading zeros
+    if (displayName.isEmpty) {
+      displayName = "0";
+    }
+  } else {
+    // Name does not start with "macchina_"
+    displayName = "?";
   }
 
   return GestureDetector(
@@ -502,7 +508,6 @@ Widget _buildBeaconCard(String macAddress) {
     ),
   );
 }
-
 
   Widget _buildBody() {
     if (_error.isNotEmpty) {

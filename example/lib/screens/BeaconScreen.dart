@@ -59,7 +59,7 @@ class _BeaconScreenState extends State<BeaconScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                'Modifica l\'assegnazione dei beacons.',
+                'Modifica l\'assegnazione dei beacon.',
                 style: TextStyle(
                   fontSize: 16,
                   color: Colors.white70, // Descriptive text in lighter white
