@@ -16,7 +16,7 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*.{swift, m, h}' # Include Swift and Objective-C files if any
   s.public_header_files = 'Classes/**/*.h'
   s.dependency 'Flutter'
-  s.platform         = :ios, '12.0'
+  s.platform         = :ios, '13.0'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 
@@ -28,9 +28,9 @@ Pod::Spec.new do |s|
   s.swift_version     = '5.0'
 
   # Add dependencies
-  s.dependency 'KBeaconLib2', '~> 1.1.8' # Ensure this is the correct pod name and version
+  s.dependency 'kbeaconlib2', '~> 1.1.8' # Ensure this is the correct pod name and version
   s.dependency 'ESPProvision', '~> 3.0.2' # Ensure this is the correct pod name and version
-  s.dependency 'EventBusSwift', '~> 3.0.0' # Add EventBusSwift for event handling
+  s.dependency 'EventBusSwift', '~> 0.2.1' # Add EventBusSwift for event handling
 
   # Uncomment if you have resource bundles
   # s.resource_bundles = {'kbeacon_plugin_privacy' => ['Resources/PrivacyInfo.xcprivacy']}

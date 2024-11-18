@@ -1,8 +1,8 @@
 import Flutter
 import UIKit
 import CoreBluetooth
-import KBeaconLib2
-import ESPProvisioning
+import kbeaconlib2
+import ESPProvision
 import EventBusSwift // Ensure EventBus is integrated
 
 public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralManagerDelegate, CBPeripheralDelegate, KBeaconMgrDelegate {
