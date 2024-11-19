@@ -5,6 +5,21 @@ import kbeaconlib2
 import ESPProvision
 import EventBusSwift // Ensure EventBusSwift is integrated
 
+// Define DeviceConnectionEvent and DeviceConnectionEventType if not provided by ESPProvision
+enum DeviceConnectionEventType {
+    case connected
+    case disconnected
+    case connectionFailed
+}
+
+class DeviceConnectionEvent {
+    var eventType: DeviceConnectionEventType
+
+    init(eventType: DeviceConnectionEventType) {
+        self.eventType = eventType
+    }
+}
+
 public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralManagerDelegate, CBPeripheralDelegate, KBeaconMgrDelegate {
 
     private var methodChannel: FlutterMethodChannel
@@ -240,17 +255,20 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
 
     // MARK: - ESP BLE Provisioning Methods
 
-    private func scanWifiNetworks(deviceName: String, proofOfPossession: String, result: @escaping FlutterResult) {
+    private func scanWifiNetworks(deviceName: String, proofOfPossession: String, ssid: String, passphrase: String, result: @escaping FlutterResult) {
         guard let peripheral = bleDevices[deviceName],
               let serviceUuid = bleDeviceServiceUuids[deviceName] else {
             result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device not found", details: nil))
             return
         }
 
-        let espDevice = espProvisionManager.createESPDevice(transport: .blePeripheral, security: .security1) // Updated labels and enum cases
+        // Provide 'deviceName' and 'completionHandler' as required
+        let espDevice = espProvisionManager.createESPDevice(transport: .ble, security: .securityOne, deviceName: deviceName) { device in
+            // Handle device creation if needed
+        }
 
         // Subscribe to device connection events
-        EventBus.onMainThread(self, name: "DeviceConnectionEvent") { [weak self] (event: DeviceConnectionEvent) in
+        EventBus.on(DeviceConnectionEvent.self) { [weak self] event in
             guard let self = self else { return }
             switch event.eventType {
             case .connected:
@@ -260,7 +278,11 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
                 // Scan for Wi-Fi networks
                 espDevice.scanNetworks { wifiList, error in
                     if let error = error {
-                        result(FlutterError(code: "WIFI_SCAN_FAILED", message: "Wi-Fi scan failed", details: error.message))
+                        if let kbException = error as? KBException {
+                            result(FlutterError(code: "WIFI_SCAN_FAILED", message: "Wi-Fi scan failed", details: kbException.localizedDescription))
+                        } else {
+                            result(FlutterError(code: "WIFI_SCAN_FAILED", message: "Wi-Fi scan failed", details: "Unknown error"))
+                        }
                         espDevice.disconnectDevice()
                         return
                     }
@@ -296,10 +318,13 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
             return
         }
 
-        let espDevice = espProvisionManager.createESPDevice(transport: .blePeripheral, security: .security1) // Updated labels and enum cases
+        // Provide 'deviceName' and 'completionHandler' as required
+        let espDevice = espProvisionManager.createESPDevice(transport: .ble, security: .securityOne, deviceName: deviceName) { device in
+            // Handle device creation if needed
+        }
 
         // Subscribe to device connection events
-        EventBus.onMainThread(self, name: "DeviceConnectionEvent") { [weak self] (event: DeviceConnectionEvent) in
+        EventBus.on(DeviceConnectionEvent.self) { [weak self] event in
             guard let self = self else { return }
             switch event.eventType {
             case .connected:
@@ -309,7 +334,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
                 // Proceed with provisioning
                 espDevice.provision(ssid: ssid, passphrase: passphrase) { success, error in
                     if let error = error as? KBException {
-                        result(FlutterError(code: "PROVISION_FAILED", message: "Provisioning failed", details: error.message))
+                        result(FlutterError(code: "PROVISION_FAILED", message: "Provisioning failed", details: error.localizedDescription))
                         espDevice.disconnectDevice()
                         return
                     }
@@ -393,7 +418,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
                 }
             } else {
                 if let kbException = error as? KBException {
-                    result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: kbException.message))
+                    result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: kbException.localizedDescription))
                 } else {
                     result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: "Unknown error"))
                 }
