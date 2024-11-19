@@ -2,24 +2,19 @@ import Flutter
 import UIKit
 import CoreBluetooth
 import ESPProvision
-import kbeaconlib2
 
-public class SwiftYourPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralManagerDelegate, CBPeripheralDelegate {
-    
-    // Flutter communication channels
+public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralManagerDelegate, CBPeripheralDelegate {
     private var methodChannel: FlutterMethodChannel?
     private var eventChannel: FlutterEventChannel?
     private var eventSink: FlutterEventSink?
 
-    // Bluetooth and ESPProvision
     private var centralManager: CBCentralManager!
     private var peripherals: [CBPeripheral] = []
     private var scanPrefix: String = ""
     private var espDevice: ESPDevice?
 
-    // Initialize plugin
     public static func register(with registrar: FlutterPluginRegistrar) {
-        let instance = SwiftYourPlugin()
+        let instance = KbeaconPlugin()
         instance.methodChannel = FlutterMethodChannel(name: "kbeacon_plugin", binaryMessenger: registrar.messenger())
         registrar.addMethodCallDelegate(instance, channel: instance.methodChannel!)
         
@@ -32,7 +27,6 @@ public class SwiftYourPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBC
         centralManager = CBCentralManager(delegate: self, queue: nil)
     }
 
-    // Handle Flutter method calls
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "scanBleDevices":
@@ -65,7 +59,6 @@ public class SwiftYourPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBC
         }
     }
 
-    // Handle Flutter event stream
     public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
         self.eventSink = events
         if let prefix = arguments as? String {
@@ -80,7 +73,6 @@ public class SwiftYourPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBC
         return nil
     }
 
-    // Start scanning for BLE devices
     private func startScanning(withPrefix prefix: String) {
         guard centralManager.state == .poweredOn else {
             eventSink?(FlutterError(code: "BLUETOOTH_OFF", message: "Bluetooth is not powered on", details: nil))
@@ -90,28 +82,28 @@ public class SwiftYourPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBC
         centralManager.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
     }
 
-    // Stop scanning for BLE devices
     private func stopScanning() {
         centralManager.stopScan()
     }
 
-    // Connect to a BLE device
     private func connectToDevice(uuid: String, result: @escaping FlutterResult) {
         guard let peripheral = peripherals.first(where: { $0.identifier.uuidString == uuid }) else {
             result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device not found", details: nil))
             return
         }
-        centralManager.connect(peripheral, options: nil)
+
+        ESPProvisionManager.shared.createESPDevice(deviceName: peripheral.name ?? "", transport: .ble) { device, error in
+            if let device = device {
+                self.espDevice = device
+                result(true)
+            } else if let error = error {
+                result(FlutterError(code: "DEVICE_CREATION_FAILED", message: error.localizedDescription, details: nil))
+            }
+        }
     }
 
-    // Provision Wi-Fi to a connected device
     private func provisionWifi(ssid: String, passphrase: String, result: @escaping FlutterResult) {
-        guard let espDevice = espDevice else {
-            result(FlutterError(code: "DEVICE_NOT_CONNECTED", message: "No device connected", details: nil))
-            return
-        }
-
-        espDevice.provision(ssid: ssid, passPhrase: passphrase, completionHandler: { status in
+        espDevice?.provision(ssid: ssid, passPhrase: passphrase, completionHandler: { status in
             switch status {
             case .success:
                 result(true)
@@ -121,10 +113,14 @@ public class SwiftYourPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBC
         })
     }
 
-    // CBCentralManagerDelegate methods
     public func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        if central.state != .poweredOn {
-            eventSink?(FlutterError(code: "BLUETOOTH_OFF", message: "Bluetooth is not powered on", details: nil))
+        switch central.state {
+        case .poweredOn:
+            break
+        case .poweredOff, .unauthorized, .unsupported, .resetting, .unknown:
+            eventSink?(FlutterError(code: "BLUETOOTH_ERROR", message: "Bluetooth is not available", details: nil))
+        @unknown default:
+            eventSink?(FlutterError(code: "BLUETOOTH_UNKNOWN", message: "Unexpected Bluetooth state", details: nil))
         }
     }
 
@@ -138,20 +134,6 @@ public class SwiftYourPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBC
                     "rssi": RSSI.intValue
                 ]
                 eventSink?(deviceInfo)
-            }
-        }
-    }
-
-    public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        espDevice = ESPProvisionManager.shared.createESPDevice(peripheral: peripheral)
-        espDevice?.connect { status in
-            switch status {
-            case .connected:
-                self.methodChannel?.invokeMethod("onDeviceConnected", arguments: nil)
-            case .disconnected:
-                self.methodChannel?.invokeMethod("onDeviceDisconnected", arguments: nil)
-            case .failed(let error):
-                self.methodChannel?.invokeMethod("onConnectionFailed", arguments: error.localizedDescription)
             }
         }
     }
