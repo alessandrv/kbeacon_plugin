@@ -45,7 +45,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
         espProvisionManager = ESPProvisionManager.shared
 
         // Initialize KBeacons Manager
-        kBeaconsMgr = KBeaconsMgr.shared()
+        kBeaconsMgr = KBeaconsMgr.sharedBeaconManager // Corrected Singleton Accessor
         kBeaconsMgr.delegate = self
     }
 
@@ -111,6 +111,9 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
             changeKBeaconDeviceName(newName: newName, result: result)
         case "disconnectDevice":
             disconnectFromKBeaconDevice(result: result)
+        case "stopScan":
+            stopScan()
+            result(nil)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -170,7 +173,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
                                advertisementData: [String: Any], rssi RSSI: NSNumber) {
         // Filter based on prefix if needed
         let deviceName = peripheral.name ?? "Unknown"
-        if deviceName.hasPrefix("") { // Replace "" with actual prefix if needed
+        if deviceName.hasPrefix(prefixFilter(prefix: "")) { // Replace "" with actual prefix if needed
             // Process the scan record
             if let scanRecordData = advertisementData[CBAdvertisementDataServiceDataKey] as? [String: Any] {
                 // Extract service data
@@ -193,6 +196,11 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
         }
     }
 
+    // Helper method for prefix filtering (if needed)
+    private func prefixFilter(prefix: String) -> String {
+        return prefix
+    }
+
     // MARK: - Permissions Handling
 
     private func requestPermissions(completion: @escaping (Bool) -> Void) {
@@ -210,7 +218,6 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
             completion(false)
         case .notDetermined:
             // Bluetooth permission has not been requested yet
-            // Unfortunately, CoreBluetooth does not provide a way to request Bluetooth permissions explicitly.
             // Permissions are requested automatically when scanning starts.
             // Start scanning to trigger the permission prompt
             startBleScan(prefix: "")
@@ -398,7 +405,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
 
     // MARK: - KBeaconMgrDelegate Methods
 
-    public func onBeaconDiscovered(beacons: [KBeacon]) {
+    @objc public func onBeaconDiscovered(beacons: [KBeacon]) {
         var beaconList: [String] = []
         for beacon in beacons {
             let beaconInfo = "MAC: \(beacon.mac), RSSI: \(beacon.rssi), Name: \(beacon.name ?? "Unknown")"
@@ -407,13 +414,25 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
         methodChannel.invokeMethod("onScanResult", arguments: beaconList)
     }
 
-    public func onScanFailed(errorCode: Int) {
-        let errorMessage = "Scan failed with error code: \(errorCode)"
-        methodChannel.invokeMethod("onScanFailed", arguments: errorMessage)
+    @objc public func onCentralBleStateChange(newState: BLECentralMgrState) {
+        let bleStateMessage: String
+        switch newState {
+        case .PowerOn:
+            bleStateMessage = "Bluetooth is Powered On"
+        case .PowerOff:
+            bleStateMessage = "Bluetooth is Powered Off"
+        case .Unauthorized:
+            bleStateMessage = "Bluetooth is Unauthorized"
+        case .Unknown:
+            bleStateMessage = "Bluetooth State is Unknown"
+        }
+        methodChannel.invokeMethod("onBleStateChange", arguments: bleStateMessage)
     }
 
-    public func onCentralBleStateChange(bleState: Int) {
-        let bleStateMessage = "Bluetooth state changed: \(bleState)"
-        methodChannel.invokeMethod("onBleStateChange", arguments: bleStateMessage)
+    // MARK: - Optional: Implement stopScan if needed
+
+    private func stopScan() {
+        kBeaconsMgr.stopScanning()
+        print("Stopped BLE scan")
     }
 }
