@@ -113,16 +113,26 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
         })
     }
 
-    public func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        switch central.state {
-        case .poweredOn:
-            break
-        case .poweredOff, .unauthorized, .unsupported, .resetting, .unknown:
-            eventSink?(FlutterError(code: "BLUETOOTH_ERROR", message: "Bluetooth is not available", details: nil))
-        @unknown default:
-            eventSink?(FlutterError(code: "BLUETOOTH_UNKNOWN", message: "Unexpected Bluetooth state", details: nil))
-        }
+public func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    switch central.state {
+    case .poweredOn:
+        // Bluetooth is powered on and ready to use
+        break
+    case .poweredOff:
+        eventSink?(FlutterError(code: "BLUETOOTH_OFF", message: "Bluetooth is turned off", details: nil))
+    case .unauthorized:
+        eventSink?(FlutterError(code: "BLUETOOTH_UNAUTHORIZED", message: "Bluetooth access is unauthorized", details: nil))
+    case .unsupported:
+        eventSink?(FlutterError(code: "BLUETOOTH_UNSUPPORTED", message: "Bluetooth is not supported on this device", details: nil))
+    case .resetting:
+        eventSink?(FlutterError(code: "BLUETOOTH_RESETTING", message: "Bluetooth is resetting", details: nil))
+    case .unknown:
+        eventSink?(FlutterError(code: "BLUETOOTH_UNKNOWN", message: "Bluetooth state is unknown", details: nil))
+    @unknown default:
+        eventSink?(FlutterError(code: "BLUETOOTH_UNKNOWN", message: "An unexpected Bluetooth state occurred", details: nil))
     }
+}
+
 
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
         if let name = peripheral.name, name.hasPrefix(scanPrefix) {
