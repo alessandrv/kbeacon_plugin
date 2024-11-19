@@ -5,7 +5,7 @@ import kbeaconlib2
 import ESPProvision
 import EventBusSwift
 
-public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, KBeaconMgrDelegate {
+public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, KBeaconMgrDelegate, CBCentralManagerDelegate {
     
     private var methodChannel: FlutterMethodChannel
     private var eventChannel: FlutterEventChannel
@@ -144,7 +144,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, KBeac
     
     // MARK: - CBCentralManagerDelegate Methods
     
-    public func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    @objc public func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn:
             print("Bluetooth is powered on")
@@ -204,21 +204,23 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, KBeac
     // MARK: - ESP BLE Provisioning Methods
     
     private func scanWifiNetworks(deviceName: String, proofOfPossession: String, result: @escaping FlutterResult) {
-        guard let beacon = bleDevices[deviceName] else {
-            result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device not found", details: nil))
+        guard let beacon = bleDevices[deviceName],
+              let peripheral = beacon.cbPeripheral,
+              let serviceUUID = beacon.serviceUUID else {
+            result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device or Service UUID not found", details: nil))
             return
         }
         
         // Create ESPDevice
-        let espDevice = espProvisionManager.createESPDevice(deviceName: deviceName, transport: .blePeripheral, security: .security1) // Ensure correct enum cases
+        let espDevice = espProvisionManager.createESPDevice(deviceName: deviceName, transport: .blePeripheral, security: .security1)
         
         // Subscribe to DeviceConnectionEvent
-        EventBus.on(self, name: "DeviceConnectionEvent") { [weak self] event in
+        EventBus.on(self, name: "DeviceConnectionEvent") { [weak self] (event: DeviceConnectionEvent) in
             guard let self = self else { return }
             // Handle the event
-            // Ensure 'DeviceConnectionEvent' is correctly defined or replace with the correct type
             if let deviceEvent = event as? DeviceConnectionEvent {
-                if deviceEvent.eventType == .connected {
+                switch deviceEvent.eventType {
+                case .connected:
                     // Set proof of possession
                     espDevice.setProofOfPossession(proofOfPossession)
                     
@@ -240,16 +242,16 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, KBeac
                         result(ssidList)
                         espDevice.disconnectDevice()
                     }
-                } else if deviceEvent.eventType == .disconnected {
+                case .disconnected:
                     result(FlutterError(code: "DEVICE_DISCONNECTED", message: "Device disconnected", details: nil))
-                } else if deviceEvent.eventType == .connectionFailed {
+                case .connectionFailed:
                     result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: nil))
                 }
             }
         }
         
         // Start the connection
-        espDevice.connectBLEDevice(peripheral: beacon.peripheral, serviceUUID: beacon.serviceUUID) { success, error in
+        espDevice.connectBLEDevice(peripheral: peripheral, serviceUUID: serviceUUID) { success, error in
             if !success, let error = error {
                 result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: error.localizedDescription))
             }
@@ -257,20 +259,23 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, KBeac
     }
     
     private func provisionWifi(deviceName: String, proofOfPossession: String, ssid: String, passphrase: String, result: @escaping FlutterResult) {
-        guard let beacon = bleDevices[deviceName] else {
-            result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device not found", details: nil))
+        guard let beacon = bleDevices[deviceName],
+              let peripheral = beacon.cbPeripheral,
+              let serviceUUID = beacon.serviceUUID else {
+            result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device or Service UUID not found", details: nil))
             return
         }
         
         // Create ESPDevice
-        let espDevice = espProvisionManager.createESPDevice(deviceName: deviceName, transport: .blePeripheral, security: .security1) // Ensure correct enum cases
+        let espDevice = espProvisionManager.createESPDevice(deviceName: deviceName, transport: .blePeripheral, security: .security1)
         
         // Subscribe to DeviceConnectionEvent
-        EventBus.on(self, name: "DeviceConnectionEvent") { [weak self] event in
+        EventBus.on(self, name: "DeviceConnectionEvent") { [weak self] (event: DeviceConnectionEvent) in
             guard let self = self else { return }
             // Handle the event
             if let deviceEvent = event as? DeviceConnectionEvent {
-                if deviceEvent.eventType == .connected {
+                switch deviceEvent.eventType {
+                case .connected:
                     // Set proof of possession
                     espDevice.setProofOfPossession(proofOfPossession)
                     
@@ -290,16 +295,16 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, KBeac
                             espDevice.disconnectDevice()
                         }
                     }
-                } else if deviceEvent.eventType == .disconnected {
+                case .disconnected:
                     result(FlutterError(code: "DEVICE_DISCONNECTED", message: "Device disconnected", details: nil))
-                } else if deviceEvent.eventType == .connectionFailed {
+                case .connectionFailed:
                     result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: nil))
                 }
             }
         }
         
         // Start the connection
-        espDevice.connectBLEDevice(peripheral: beacon.peripheral, serviceUUID: beacon.serviceUUID) { success, error in
+        espDevice.connectBLEDevice(peripheral: peripheral, serviceUUID: serviceUUID) { success, error in
             if !success, let error = error {
                 result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: error.localizedDescription))
             }
@@ -328,7 +333,9 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, KBeac
     }
     
     private func connectToKBeaconDevice(macAddress: String, password: String, result: @escaping FlutterResult) {
-        guard let beacon = kBeaconsMgr.getBeacon(macAddress) else {
+        guard let beacon = kBeaconsMgr.getBeacon(macAddress),
+              let peripheral = beacon.cbPeripheral,
+              let serviceUUID = beacon.serviceUUID else {
             result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Could not find device with MAC: \(macAddress)", details: nil))
             return
         }
@@ -378,10 +385,12 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, KBeac
     public func onBeaconDiscovered(beacons: [KBeacon]) {
         var beaconList: [String] = []
         for beacon in beacons {
-            let beaconInfo = "MAC: \(beacon.mac), RSSI: \(beacon.rssi), Name: \(beacon.name ?? "Unknown")"
+            let beaconInfo = "MAC: \(beacon.mac ?? "Unknown"), RSSI: \(beacon.rssi), Name: \(beacon.name ?? "Unknown")"
             beaconList.append(beaconInfo)
             // Store discovered beacons
-            bleDevices[beacon.mac] = beacon
+            if let mac = beacon.mac {
+                bleDevices[mac] = beacon
+            }
         }
         methodChannel.invokeMethod("onScanResult", arguments: beaconList)
     }
