@@ -102,16 +102,23 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
         }
     }
 
-    private func provisionWifi(ssid: String, passphrase: String, result: @escaping FlutterResult) {
-        espDevice?.provision(ssid: ssid, passPhrase: passphrase, completionHandler: { status in
-            switch status {
-            case .success:
-                result(true)
-            case .failure(let error):
-                result(FlutterError(code: "PROVISION_FAILED", message: error.localizedDescription, details: nil))
-            }
-        })
+   private func provisionWifi(ssid: String, passphrase: String, result: @escaping FlutterResult) {
+    guard let espDevice = espDevice else {
+        result(FlutterError(code: "DEVICE_NOT_CONNECTED", message: "No device connected for provisioning", details: nil))
+        return
     }
+
+    espDevice.provision(ssid: ssid, passPhrase: passphrase) { success, error in
+        if success {
+            result(true)
+        } else if let error = error {
+            result(FlutterError(code: "PROVISION_FAILED", message: error.localizedDescription, details: nil))
+        } else {
+            result(FlutterError(code: "PROVISION_FAILED", message: "Unknown error occurred during provisioning", details: nil))
+        }
+    }
+}
+
 
 public func centralManagerDidUpdateState(_ central: CBCentralManager) {
     switch central.state {
