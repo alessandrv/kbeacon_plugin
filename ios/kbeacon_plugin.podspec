@@ -16,7 +16,7 @@ Pod::Spec.new do |s|
   s.source_files     = 'Classes/**/*.{swift, m, h}' # Include Swift and Objective-C files if any
   s.public_header_files = 'Classes/**/*.h'
   s.dependency 'Flutter'
-  s.platform         = :ios, '13.0'
+  s.platform         = :ios, '13.1'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 
