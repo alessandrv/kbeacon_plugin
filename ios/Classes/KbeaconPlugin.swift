@@ -3,9 +3,9 @@ import UIKit
 import CoreBluetooth
 import kbeaconlib2
 import ESPProvision
-import EventBusSwift // Ensure EventBusSwift is integrated
+import EventBusSwift
 
-public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralManagerDelegate, CBPeripheralDelegate, ConnStateDelegate {
+public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, KBeaconMgrDelegate {
     
     private var methodChannel: FlutterMethodChannel
     private var eventChannel: FlutterEventChannel
@@ -18,8 +18,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
     private var kBeaconsMgr: KBeaconsMgr!
     private var connectedBeacon: KBeacon?
     
-    private var bleDevices: [String: CBPeripheral] = [:]
-    private var bleDeviceServiceUuids: [String: String] = [:]
+    private var bleDevices: [String: KBeacon] = [:]
     
     public static func register(with registrar: FlutterPluginRegistrar) {
         let methodChannel = FlutterMethodChannel(name: "kbeacon_plugin", binaryMessenger: registrar.messenger())
@@ -41,7 +40,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
         espProvisionManager = ESPProvisionManager.shared
         
         // Initialize KBeacons Manager
-        kBeaconsMgr = KBeaconsMgr.sharedBeaconManager // Corrected Singleton Accessor
+        kBeaconsMgr = KBeaconsMgr.sharedBeaconManager()
         kBeaconsMgr.delegate = self
     }
     
@@ -58,7 +57,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
     }
     
     public func onCancel(withArguments arguments: Any?) -> FlutterError? {
-        stopBleScan()
+        stopScan()
         self.bleScanEventSink = nil
         return nil
     }
@@ -138,8 +137,8 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
         print("Started BLE scan with prefix: \(prefix)")
     }
     
-    private func stopBleScan() {
-        centralManager.stopScan()
+    private func stopScan() {
+        kBeaconsMgr.stopScanning()
         print("Stopped BLE scan")
     }
     
@@ -184,11 +183,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
             bleScanEventSink?(message)
             
             // Optionally, store the peripheral
-            bleDevices[deviceName] = peripheral
-            if let serviceUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID],
-               let firstUUID = serviceUUIDs.first {
-                bleDeviceServiceUuids[deviceName] = firstUUID.uuidString
-            }
+            // Here, assuming that `kBeaconsMgr` will handle beacon discovery
         }
     }
     
@@ -200,37 +195,8 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
     // MARK: - Permissions Handling
     
     private func requestPermissions(completion: @escaping (Bool) -> Void) {
-        if #available(iOS 13.1, *) {
-            // Check Bluetooth authorization
-            let bluetoothAuth = CBManager.authorization
-            switch bluetoothAuth {
-            case .allowedAlways:
-                // Bluetooth is authorized
-                checkLocationPermissions(completion: completion)
-            case .denied, .restricted:
-                // Bluetooth is not authorized
-                completion(false)
-            case .notDetermined:
-                // Bluetooth permission has not been requested yet
-                // Permissions are requested automatically when scanning starts.
-                // Start scanning to trigger the permission prompt
-                startBleScan(prefix: "")
-                // The completion will be called based on centralManagerDidUpdateState
-                // For simplicity, assume granted
-                completion(true)
-            @unknown default:
-                completion(false)
-            }
-        } else {
-            // Fallback on earlier versions
-            // For iOS versions below 13.1, use alternative authorization methods or assume authorized
-            checkLocationPermissions(completion: completion)
-        }
-    }
-    
-    private func checkLocationPermissions(completion: @escaping (Bool) -> Void) {
-        // Request location permissions if needed
-        // Implement location permission requests using CLLocationManager if necessary
+        // iOS handles permissions automatically when starting scans
+        // You can check authorization status if needed
         // For simplicity, assume permissions are granted
         completion(true)
     }
@@ -238,99 +204,106 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
     // MARK: - ESP BLE Provisioning Methods
     
     private func scanWifiNetworks(deviceName: String, proofOfPossession: String, result: @escaping FlutterResult) {
-        guard let peripheral = bleDevices[deviceName],
-              let serviceUuid = bleDeviceServiceUuids[deviceName] else {
+        guard let beacon = bleDevices[deviceName] else {
             result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device not found", details: nil))
             return
         }
         
-        let espDevice = espProvisionManager.createESPDevice(deviceName: deviceName, transport: .blePeripheral, security: .security1) // Corrected argument order and enum case
+        // Create ESPDevice
+        let espDevice = espProvisionManager.createESPDevice(deviceName: deviceName, transport: .blePeripheral, security: .security1) // Ensure correct enum cases
         
-        // Subscribe to device connection events
-        EventBus.onMainThread(self, name: "DeviceConnectionEvent") { (event: DeviceConnectionEvent) in
-            switch event.eventType {
-            case .connected:
-                // Handle device connected
-                espDevice.setProofOfPossession(proofOfPossession)
-                
-                // Scan for Wi-Fi networks
-                espDevice.scanNetworks { wifiList, error in
-                    if let error = error as? KBException {
-                        result(FlutterError(code: "WIFI_SCAN_FAILED", message: "Wi-Fi scan failed", details: error.message))
-                        espDevice.disconnectDevice()
-                        return
-                    }
+        // Subscribe to DeviceConnectionEvent
+        EventBus.on(self, name: "DeviceConnectionEvent") { [weak self] event in
+            guard let self = self else { return }
+            // Handle the event
+            // Ensure 'DeviceConnectionEvent' is correctly defined or replace with the correct type
+            if let deviceEvent = event as? DeviceConnectionEvent {
+                if deviceEvent.eventType == .connected {
+                    // Set proof of possession
+                    espDevice.setProofOfPossession(proofOfPossession)
                     
-                    guard let wifiList = wifiList else {
-                        result(FlutterError(code: "WIFI_SCAN_FAILED", message: "Wi-Fi scan returned no results", details: nil))
+                    // Scan for Wi-Fi networks
+                    espDevice.scanNetworks { wifiList, error in
+                        if let error = error as? KBException {
+                            result(FlutterError(code: "WIFI_SCAN_FAILED", message: "Wi-Fi scan failed", details: error.localizedDescription))
+                            espDevice.disconnectDevice()
+                            return
+                        }
+                        
+                        guard let wifiList = wifiList else {
+                            result(FlutterError(code: "WIFI_SCAN_FAILED", message: "Wi-Fi scan returned no results", details: nil))
+                            espDevice.disconnectDevice()
+                            return
+                        }
+                        
+                        let ssidList = wifiList.map { $0.wifiName }
+                        result(ssidList)
                         espDevice.disconnectDevice()
-                        return
                     }
-                    
-                    let ssidList = wifiList.map { $0.wifiName }
-                    result(ssidList)
-                    espDevice.disconnectDevice()
+                } else if deviceEvent.eventType == .disconnected {
+                    result(FlutterError(code: "DEVICE_DISCONNECTED", message: "Device disconnected", details: nil))
+                } else if deviceEvent.eventType == .connectionFailed {
+                    result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: nil))
                 }
-                
-            case .disconnected:
-                // Handle device disconnected
-                result(FlutterError(code: "DEVICE_DISCONNECTED", message: "Device disconnected", details: nil))
-                
-            case .connectionFailed:
-                // Handle connection failed
-                result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: nil))
             }
         }
         
         // Start the connection
-        espDevice.connectBLEDevice(peripheral: peripheral, serviceUUID: serviceUuid)
+        espDevice.connectBLEDevice(peripheral: beacon.peripheral, serviceUUID: beacon.serviceUUID) { success, error in
+            if !success, let error = error {
+                result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: error.localizedDescription))
+            }
+        }
     }
     
     private func provisionWifi(deviceName: String, proofOfPossession: String, ssid: String, passphrase: String, result: @escaping FlutterResult) {
-        guard let peripheral = bleDevices[deviceName],
-              let serviceUuid = bleDeviceServiceUuids[deviceName] else {
+        guard let beacon = bleDevices[deviceName] else {
             result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device not found", details: nil))
             return
         }
         
-        let espDevice = espProvisionManager.createESPDevice(deviceName: deviceName, transport: .blePeripheral, security: .security1) // Corrected argument order and enum case
+        // Create ESPDevice
+        let espDevice = espProvisionManager.createESPDevice(deviceName: deviceName, transport: .blePeripheral, security: .security1) // Ensure correct enum cases
         
-        // Subscribe to device connection events
-        EventBus.onMainThread(self, name: "DeviceConnectionEvent") { (event: DeviceConnectionEvent) in
-            switch event.eventType {
-            case .connected:
-                // Handle device connected
-                espDevice.setProofOfPossession(proofOfPossession)
-                
-                // Proceed with provisioning
-                espDevice.provision(ssid: ssid, passphrase: passphrase) { success, error in
-                    if let error = error as? KBException {
-                        result(FlutterError(code: "PROVISION_FAILED", message: "Provisioning failed", details: error.message))
-                        espDevice.disconnectDevice()
-                        return
-                    }
+        // Subscribe to DeviceConnectionEvent
+        EventBus.on(self, name: "DeviceConnectionEvent") { [weak self] event in
+            guard let self = self else { return }
+            // Handle the event
+            if let deviceEvent = event as? DeviceConnectionEvent {
+                if deviceEvent.eventType == .connected {
+                    // Set proof of possession
+                    espDevice.setProofOfPossession(proofOfPossession)
                     
-                    if success {
-                        result(true)
-                        espDevice.disconnectDevice()
-                    } else {
-                        result(FlutterError(code: "PROVISION_FAILED", message: "Provisioning failed", details: "Unknown error"))
-                        espDevice.disconnectDevice()
+                    // Proceed with provisioning
+                    espDevice.provision(ssid: ssid, passphrase: passphrase) { success, error in
+                        if let error = error as? KBException {
+                            result(FlutterError(code: "PROVISION_FAILED", message: "Provisioning failed", details: error.localizedDescription))
+                            espDevice.disconnectDevice()
+                            return
+                        }
+                        
+                        if success {
+                            result(true)
+                            espDevice.disconnectDevice()
+                        } else {
+                            result(FlutterError(code: "PROVISION_FAILED", message: "Provisioning failed", details: "Unknown error"))
+                            espDevice.disconnectDevice()
+                        }
                     }
+                } else if deviceEvent.eventType == .disconnected {
+                    result(FlutterError(code: "DEVICE_DISCONNECTED", message: "Device disconnected", details: nil))
+                } else if deviceEvent.eventType == .connectionFailed {
+                    result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: nil))
                 }
-                
-            case .disconnected:
-                // Handle device disconnected
-                result(FlutterError(code: "DEVICE_DISCONNECTED", message: "Device disconnected", details: nil))
-                
-            case .connectionFailed:
-                // Handle connection failed
-                result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: nil))
             }
         }
         
         // Start the connection
-        espDevice.connectBLEDevice(peripheral: peripheral, serviceUUID: serviceUuid)
+        espDevice.connectBLEDevice(peripheral: beacon.peripheral, serviceUUID: beacon.serviceUUID) { success, error in
+            if !success, let error = error {
+                result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: error.localizedDescription))
+            }
+        }
     }
     
     // MARK: - KBeacon Methods
@@ -355,21 +328,19 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
     }
     
     private func connectToKBeaconDevice(macAddress: String, password: String, result: @escaping FlutterResult) {
-        // Assuming you have a reference to the beacon, possibly stored during discovery
-        // Since KBeaconsMgr does not have a getBeacon method, manage beacon references yourself
-        
-        // Example: Retrieve from a stored dictionary
-        if let beacon = discoveredBeacons[macAddress] {
-            beacon.connect(password: password, timeout: 5000) { (state: CBPeripheralState, reason: Int) in
-                if state == .connected {
-                    self.connectedBeacon = beacon
-                    result("Connected to \(macAddress)")
-                } else if state == .disconnected {
-                    result(FlutterError(code: "CONNECT_FAILED", message: "Failed to connect to device", details: nil))
-                }
-            }
-        } else {
+        guard let beacon = kBeaconsMgr.getBeacon(macAddress) else {
             result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Could not find device with MAC: \(macAddress)", details: nil))
+            return
+        }
+        
+        beacon.connect(password: password, timeout: 5000) { [weak self] (state: KBConnState, evt: KBConnEvtReason) in
+            guard let self = self else { return }
+            if state == .Connected {
+                self.connectedBeacon = beacon
+                result("Connected to \(macAddress)")
+            } else if state == .Disconnected {
+                result(FlutterError(code: "CONNECT_FAILED", message: "Failed to connect to device", details: nil))
+            }
         }
     }
     
@@ -384,135 +355,70 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
         
         let configList: [KBCfgBase] = [commonConfig]
         
-        beacon.modifyConfig(array: configList, callback: { success, error in // Corrected argument labels
+        beacon.modifyConfig(array: configList) { [weak self] success, error in
+            guard let self = self else { return }
             if success {
                 result("Device name changed to \(newName)")
-                // Disconnect after a delay
+                // Optionally, disconnect after a delay if needed
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     beacon.disconnect()
                 }
             } else {
                 if let kbException = error as? KBException {
-                    result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: kbException.message))
+                    result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: kbException.localizedDescription))
                 } else {
                     result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: "Unknown error"))
                 }
             }
-        })
-    }
-    
-    // MARK: - ConnStateDelegate Methods
-    
-    public func onConnStateChange(_ beacon: KBeacon, state: KBConnState, evt: KBConnEvtReason) {
-        if state == .Connecting {
-            self.txtBeaconStatus.text = "Connecting to device"
-        } else if state == .Connected {
-            self.indicatorView?.stopAnimating()
-            self.txtBeaconStatus.text = "Device connected"
-            self.updateDeviceToView()
-        } else if state == .Disconnected {
-            self.indicatorView?.stopAnimating()
-            self.txtBeaconStatus.text = "Device disconnected"
-            if evt == .ConnAuthFail {
-                NSLog("auth failed")
-                self.showPasswordInputDlg(beacon)
-            }
-        }
-        
-        self.updateActionButton()
-    }
-    
-    // MARK: - Additional Methods (As per Official Example)
-    
-    func updateDeviceToView() {
-        guard let commonCfg = connectedBeacon?.getCommonCfg() else {
-            print("get common parameters failed, maybe the app does not request reading common parameters")
-            return
-        }
-        
-        print("support max adv slot: \(commonCfg.getMaxSlot())")
-        // ... (Other configuration parameters)
-        
-        // Example: Access beacon's name using public method
-        self.txtName.text = commonCfg.getName()
-        self.labelModel.text = commonCfg.getModel()
-        self.labelVersion.text = commonCfg.getVersion()
-        self.mLabelHardwareVersion.text = commonCfg.getHardwareVersion()
-        
-        // Access iBeacon configuration
-        if let iBeaconList = connectedBeacon?.getSlotCfgByAdvType(.IBeacon),
-           let firstIBeaconAdv = iBeaconList.first as? KBCfgAdvIBeacon {
-            self.txtTxPower.text = "\(firstIBeaconAdv.getTxPower())"
-            self.txtAdvPeriod.text = "\(firstIBeaconAdv.getAdvPeriod())"
-            self.txtBeaconUUID.text = firstIBeaconAdv.getUuid()
-            self.txtBeaconMajor.text = "\(firstIBeaconAdv.getMajorID())"
-            self.txtBeaconMinor.text = "\(firstIBeaconAdv.getMinorID())"
-        } else {
-            print("does not find iBeacon configuration in device")
         }
     }
     
-    func updateActionButton() {
-        if connectedBeacon?.isConnected ?? false {
-            actionConnect.title = getString("BEACON_DISCONNECT")
-            actionConnect.tag = DeviceViewController.ACTION_DISCONNECT
-        } else {
-            actionConnect.title = getString("BEACON_CONNECT")
-            actionConnect.tag = DeviceViewController.ACTION_CONNECT
+    // MARK: - KBeaconMgrDelegate Methods
+    
+    public func onBeaconDiscovered(beacons: [KBeacon]) {
+        var beaconList: [String] = []
+        for beacon in beacons {
+            let beaconInfo = "MAC: \(beacon.mac), RSSI: \(beacon.rssi), Name: \(beacon.name ?? "Unknown")"
+            beaconList.append(beaconInfo)
+            // Store discovered beacons
+            bleDevices[beacon.mac] = beacon
         }
+        methodChannel.invokeMethod("onScanResult", arguments: beaconList)
     }
     
-    // Example: Show password input dialog
-    func showPasswordInputDlg(_ beacon: KBeacon) {
-        let passwordInputDlg = UIAlertController(title: getString("AUTH_FAIL"),
-                                                 message: getString("PWD_INPUT"),
-                                                 preferredStyle: .alert)
-        passwordInputDlg.addTextField { (txtField) in
-            txtField.placeholder = getString("PWD_HINT")
-            txtField.isSecureTextEntry = true
-        }
-        passwordInputDlg.addAction(UIAlertAction(title: getString("DLG_CANCEL"),
-                                                 style: .cancel,
-                                                 handler: nil))
-        
-        passwordInputDlg.addAction(UIAlertAction(title: getString("DLG_OK"),
-                                                 style: .default,
-                                                 handler: { [weak self] _ in
-            if let password = passwordInputDlg.textFields?.first?.text, !password.isEmpty {
-                let pref = KBPreferance.sharedPreferance
-                pref.saveBeaconPassword(beacon.uuidString!, password: password)
-                
-                beacon.connect(password, timeout: 15.0, delegate: self)
-                
-                let connText = getString("BEACON_CONNECT")
-                self?.indicatorView = IndicatorViewController(title: connText, center: self?.view.center ?? CGPoint.zero)
-                self?.indicatorView?.startAnimating(self?.view)
-            }
-        }))
-        self.present(passwordInputDlg, animated: true, completion: nil)
+    public func onScanFailed(errorCode: Int) {
+        let errorMessage = "Scan failed with error code: \(errorCode)"
+        methodChannel.invokeMethod("onScanFailed", arguments: errorMessage)
     }
     
-    // Example: Show dialog message
-    func showDialogMsg(_ title: String, message: String) {
-        let alertController = UIAlertController(title: title,
-                                                message: message,
-                                                preferredStyle: .alert)
-        
-        let OKTitle = NSLocalizedString("DLG_OK", comment: "")
-        let okAction = UIAlertAction(title: OKTitle, style: .default, handler: nil)
-        alertController.addAction(okAction)
-        self.present(alertController, animated: true, completion: nil)
+    public func onCentralBleStateChange(newState: BLECentralMgrState) {
+        let bleStateMessage: String
+        switch newState {
+        case .PowerOn:
+            bleStateMessage = "Bluetooth is Powered On"
+        case .PowerOff:
+            bleStateMessage = "Bluetooth is Powered Off"
+        case .Unauthorized:
+            bleStateMessage = "Bluetooth is Unauthorized"
+        case .Unknown:
+            bleStateMessage = "Bluetooth State is Unknown"
+        }
+        methodChannel.invokeMethod("onBleStateChange", arguments: bleStateMessage)
+    }
+    
+    // MARK: - Additional Methods
+    
+    // Example: Show dialog message via Flutter
+    private func showDialogMsg(title: String, message: String) {
+        let args: [String: Any] = ["title": title, "message": message]
+        methodChannel.invokeMethod("showDialog", arguments: args)
     }
     
     // Example: Get localized string (Implement as needed)
-    func getString(_ key: String) -> String {
-        // Implement localization as needed
+    private func getString(_ key: String) -> String {
+        // Implement localization as needed or return key
         return key
     }
     
-    // MARK: - Example Implementations from Official Code
-    
-    // Implement other methods as per your plugin's requirements, following the official example's structure and usage.
-    
-    // Ensure that all method calls align with the library's API as demonstrated in the official example.
+    // You can add more helper methods as needed
 }
