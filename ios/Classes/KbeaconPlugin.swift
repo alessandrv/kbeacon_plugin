@@ -3,13 +3,12 @@ import UIKit
 import CoreBluetooth
 import kbeaconlib2
 import ESPProvision
-import EventBusSwift // Ensure EventBus is integrated
+import EventBusSwift // Ensure EventBusSwift is integrated
 
 public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCentralManagerDelegate, CBPeripheralDelegate, KBeaconMgrDelegate {
 
     private var methodChannel: FlutterMethodChannel
     private var eventChannel: FlutterEventChannel
-    private var eventSink: FlutterEventSink?
     private var bleScanEventSink: FlutterEventSink?
 
     private var centralManager: CBCentralManager!
@@ -204,28 +203,31 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
     // MARK: - Permissions Handling
 
     private func requestPermissions(completion: @escaping (Bool) -> Void) {
-        // iOS handles permissions differently. Permissions are prompted when you attempt to access Bluetooth or location.
-        // Ensure that Info.plist contains the necessary keys.
-
-        // Check Bluetooth authorization
-        let bluetoothAuth = CBManager.authorization
-        switch bluetoothAuth {
-        case .allowedAlways:
-            // Bluetooth is authorized
+        if #available(iOS 13.1, *) {
+            // Check Bluetooth authorization
+            let bluetoothAuth = CBManager.authorization
+            switch bluetoothAuth {
+            case .allowedAlways:
+                // Bluetooth is authorized
+                checkLocationPermissions(completion: completion)
+            case .denied, .restricted:
+                // Bluetooth is not authorized
+                completion(false)
+            case .notDetermined:
+                // Bluetooth permission has not been requested yet
+                // Permissions are requested automatically when scanning starts.
+                // Start scanning to trigger the permission prompt
+                startBleScan(prefix: "")
+                // The completion will be called based on centralManagerDidUpdateState
+                // For simplicity, assume granted
+                completion(true)
+            @unknown default:
+                completion(false)
+            }
+        } else {
+            // Fallback on earlier versions
+            // For iOS versions below 13.1, use alternative authorization methods or assume authorized
             checkLocationPermissions(completion: completion)
-        case .denied, .restricted:
-            // Bluetooth is not authorized
-            completion(false)
-        case .notDetermined:
-            // Bluetooth permission has not been requested yet
-            // Permissions are requested automatically when scanning starts.
-            // Start scanning to trigger the permission prompt
-            startBleScan(prefix: "")
-            // The completion will be called based on centralManagerDidUpdateState
-            // For simplicity, assume granted
-            completion(true)
-        @unknown default:
-            completion(false)
         }
     }
 
@@ -245,22 +247,20 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
             return
         }
 
-        let espDevice = espProvisionManager.createESPDevice(transportType: .BLE, securityType: .SECURITY_1)
+        let espDevice = espProvisionManager.createESPDevice(transport: .blePeripheral, security: .security1) // Updated labels and enum cases
 
         // Subscribe to device connection events
-        EventBus.subscribe(DeviceConnectionEvent.self) { [weak self] event in
+        EventBus.onMainThread(self, name: "DeviceConnectionEvent") { [weak self] (event: DeviceConnectionEvent) in
             guard let self = self else { return }
-            if event.eventType == .EVENT_DEVICE_CONNECTED {
-                // Unsubscribe
-                EventBus.unsubscribe(DeviceConnectionEvent.self)
-
-                // Set proof of possession
+            switch event.eventType {
+            case .connected:
+                // Handle device connected
                 espDevice.setProofOfPossession(proofOfPossession)
 
                 // Scan for Wi-Fi networks
                 espDevice.scanNetworks { wifiList, error in
                     if let error = error {
-                        result(FlutterError(code: "WIFI_SCAN_FAILED", message: "Wi-Fi scan failed", details: error.localizedDescription))
+                        result(FlutterError(code: "WIFI_SCAN_FAILED", message: "Wi-Fi scan failed", details: error.message))
                         espDevice.disconnectDevice()
                         return
                     }
@@ -276,13 +276,11 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
                     espDevice.disconnectDevice()
                 }
 
-            } else if event.eventType == .EVENT_DEVICE_DISCONNECTED {
-                // Unsubscribe
-                EventBus.unsubscribe(DeviceConnectionEvent.self)
+            case .disconnected:
+                // Handle device disconnected
                 result(FlutterError(code: "DEVICE_DISCONNECTED", message: "Device disconnected", details: nil))
-            } else if event.eventType == .EVENT_DEVICE_CONNECTION_FAILED {
-                // Unsubscribe
-                EventBus.unsubscribe(DeviceConnectionEvent.self)
+            case .connectionFailed:
+                // Handle connection failed
                 result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: nil))
             }
         }
@@ -298,22 +296,20 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
             return
         }
 
-        let espDevice = espProvisionManager.createESPDevice(transportType: .BLE, securityType: .SECURITY_1)
+        let espDevice = espProvisionManager.createESPDevice(transport: .blePeripheral, security: .security1) // Updated labels and enum cases
 
         // Subscribe to device connection events
-        EventBus.subscribe(DeviceConnectionEvent.self) { [weak self] event in
+        EventBus.onMainThread(self, name: "DeviceConnectionEvent") { [weak self] (event: DeviceConnectionEvent) in
             guard let self = self else { return }
-            if event.eventType == .EVENT_DEVICE_CONNECTED {
-                // Unsubscribe
-                EventBus.unsubscribe(DeviceConnectionEvent.self)
-
-                // Set proof of possession
+            switch event.eventType {
+            case .connected:
+                // Handle device connected
                 espDevice.setProofOfPossession(proofOfPossession)
 
                 // Proceed with provisioning
                 espDevice.provision(ssid: ssid, passphrase: passphrase) { success, error in
-                    if let error = error {
-                        result(FlutterError(code: "PROVISION_FAILED", message: "Provisioning failed", details: error.localizedDescription))
+                    if let error = error as? KBException {
+                        result(FlutterError(code: "PROVISION_FAILED", message: "Provisioning failed", details: error.message))
                         espDevice.disconnectDevice()
                         return
                     }
@@ -322,18 +318,16 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
                         result(true)
                         espDevice.disconnectDevice()
                     } else {
-                        result(FlutterError(code: "PROVISION_FAILED", message: "Provisioning failed", details: nil))
+                        result(FlutterError(code: "PROVISION_FAILED", message: "Provisioning failed", details: "Unknown error"))
                         espDevice.disconnectDevice()
                     }
                 }
 
-            } else if event.eventType == .EVENT_DEVICE_DISCONNECTED {
-                // Unsubscribe
-                EventBus.unsubscribe(DeviceConnectionEvent.self)
+            case .disconnected:
+                // Handle device disconnected
                 result(FlutterError(code: "DEVICE_DISCONNECTED", message: "Device disconnected", details: nil))
-            } else if event.eventType == .EVENT_DEVICE_CONNECTION_FAILED {
-                // Unsubscribe
-                EventBus.unsubscribe(DeviceConnectionEvent.self)
+            case .connectionFailed:
+                // Handle connection failed
                 result(FlutterError(code: "CONNECTION_FAILED", message: "Failed to connect to device", details: nil))
             }
         }
@@ -346,7 +340,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
 
     private func startKBeaconScan(result: @escaping FlutterResult) {
         let scanResult = kBeaconsMgr.startScanning()
-        if scanResult == 0 {
+        if scanResult {
             result("Scan started successfully")
         } else {
             result(FlutterError(code: "SCAN_FAILED", message: "Failed to start scanning", details: nil))
@@ -365,7 +359,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
 
     private func connectToKBeaconDevice(macAddress: String, password: String, result: @escaping FlutterResult) {
         if let beacon = kBeaconsMgr.getBeacon(macAddress: macAddress) {
-            beacon.connect(password: password, timeout: 5000) { [weak self] state, reason in
+            beacon.connect(password: password, timeout: 5000) { [weak self] (state: CBPeripheralState, reason: Int) in
                 guard let self = self else { return }
                 if state == .connected {
                     self.connectedBeacon = beacon
@@ -390,7 +384,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
 
         let configList: [KBCfgBase] = [commonConfig]
 
-        beacon.modifyConfig(configList: configList) { success, error in
+        beacon.modifyConfig(array: configList, callback: { success, error in // Corrected argument labels
             if success {
                 result("Device name changed to \(newName)")
                 // Disconnect after a delay
@@ -398,9 +392,13 @@ public class KbeaconPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, CBCen
                     beacon.disconnect()
                 }
             } else {
-                result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: error?.localizedDescription))
+                if let kbException = error as? KBException {
+                    result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: kbException.message))
+                } else {
+                    result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: "Unknown error"))
+                }
             }
-        }
+        })
     }
 
     // MARK: - KBeaconMgrDelegate Methods
