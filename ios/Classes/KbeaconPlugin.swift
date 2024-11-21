@@ -28,7 +28,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin {
     // Update the initializer to use the correct channel name
     init(registrar: FlutterPluginRegistrar) {
         self.methodChannel = FlutterMethodChannel(name: "kbeacon_plugin", binaryMessenger: registrar.messenger())
-        self.eventChannel = FlutterEventChannel(name: "kbeacon_plugin_events", binaryMessenger: registrar.messenger()) // Updated to match Android
+        self.eventChannel = FlutterEventChannel(name: "flutter_esp_ble_prov/scanBleDevices", binaryMessenger: registrar.messenger()) // Updated name
         self.beaconManager = KBeaconsMgr.sharedBeaconManager
         super.init()
         self.beaconManager.delegate = self
@@ -85,8 +85,6 @@ extension KbeaconPlugin: FlutterStreamHandler {
 extension KbeaconPlugin: ConnStateDelegate {
     public func onConnStateChange(_ beacon: KBeacon, state: KBConnState, evt: KBConnEvtReason) {
         print("Connection state changed: \(state.rawValue), Event: \(evt.rawValue)")
-        var eventData: [String: Any] = ["macAddress": beacon.mac ?? ""]
-        
         switch state {
         case .Connected:
             connectedBeacon = beacon
@@ -95,26 +93,24 @@ extension KbeaconPlugin: ConnStateDelegate {
                 result("Connected to device \(mac)")
                 connectionResults.removeValue(forKey: mac)
             }
-            eventData["connectionState"] = "connected"
+            eventSink?(["connectionState": "connected", "macAddress": beacon.mac ?? ""])
         case .Disconnected:
             if let mac = beacon.mac, let result = connectionResults[mac] {
                 print("Failed to connect to device \(mac)")
                 result(FlutterError(code: "CONNECT_FAILED", message: "Failed to connect to device \(mac)", details: nil))
                 connectionResults.removeValue(forKey: mac)
             }
-            eventData["connectionState"] = "disconnected"
+            eventSink?(["connectionState": "disconnected", "macAddress": beacon.mac ?? ""])
         case .Connecting:
-            eventData["connectionState"] = "connecting"
+            eventSink?(["connectionState": "connecting", "macAddress": beacon.mac ?? ""])
         case .Disconnecting:
-            eventData["connectionState"] = "disconnecting"
+            eventSink?(["connectionState": "disconnecting", "macAddress": beacon.mac ?? ""])
         }
-        
-        eventSink?(eventData)
     }
 }
 
 extension KbeaconPlugin: KBeaconMgrDelegate {
-    public func onBeaconDiscovered(beacons: [KBeacon]) {
+       public func onBeaconDiscovered(beacons: [KBeacon]) {
         print("Beacons discovered: \(beacons.count)")
         var beaconList: [[String: Any]] = []
         for beacon in beacons {

@@ -2,49 +2,9 @@ import 'package:flutter/services.dart';
 
 class KbeaconPlugin {
   static const MethodChannel _channel = MethodChannel('kbeacon_plugin');
-  static const EventChannel _eventChannel = EventChannel('kbeacon_plugin_events'); // Updated to match native plugins
+  static const EventChannel _eventChannel = EventChannel('flutter_esp_ble_prov/scanBleDevices');
 
-  // Stream controllers for different events
-  Stream<List<String>>? _scanResultStream;
-  Stream<String>? _scanFailedStream;
-  Stream<String>? _bleStateChangeStream;
-
-  KbeaconPlugin._privateConstructor();
-
-  static final KbeaconPlugin _instance = KbeaconPlugin._privateConstructor();
-
-  factory KbeaconPlugin() {
-    return _instance;
-  }
-
-  // Initialize streams
-  void initialize() {
-    _scanResultStream = _eventChannel.receiveBroadcastStream().map((event) {
-      if (event is Map) {
-        if (event.containsKey('onScanResult')) {
-          List<String> beacons = List<String>.from(event['onScanResult']);
-          return beacons;
-        }
-      }
-      return <String>[];
-    });
-
-    _scanFailedStream = _eventChannel.receiveBroadcastStream().map((event) {
-      if (event is Map && event.containsKey('onScanFailed')) {
-        return event['onScanFailed'] as String;
-      }
-      return '';
-    });
-
-    _bleStateChangeStream = _eventChannel.receiveBroadcastStream().map((event) {
-      if (event is Map && event.containsKey('bluetoothState')) {
-        return event['bluetoothState'] as String;
-      }
-      return '';
-    });
-  }
-
-  // Start scanning for advertising messages
+ // New method to start scanning for advertising messages
   Future<void> checkAdvertisingMessages() async {
     try {
       await _channel.invokeMethod('checkAdvertisingMessages');
@@ -59,10 +19,9 @@ class KbeaconPlugin {
         .receiveBroadcastStream()
         .map((event) => event.toString());
   }
-
   // ESP BLE Provisioning Methods
 
-  @pragma('vm:entry-point')
+@pragma('vm:entry-point')
   Future<void> scanBleDevices(String prefix) async {
     try {
       await _channel.invokeMethod('scanBleDevices', {'prefix': prefix});
@@ -70,18 +29,16 @@ class KbeaconPlugin {
       throw 'Failed to scan BLE devices: ${e.message}';
     }
   }
-
-  Future<void> disconnectDevice() async {
+    Future<void> disconnectDevice() async {
     try {
       await _channel.invokeMethod('disconnectDevice');
     } catch (e) {
       throw Exception('Failed to disconnect device: $e');
     }
   }
-
-  Stream<String> scanBleDevicesAsStream(String prefix) {
-    return _eventChannel.receiveBroadcastStream(prefix).map((event) => event.toString());
-  }
+Stream<String> scanBleDevicesAsStream(String prefix) {
+  return _eventChannel.receiveBroadcastStream(prefix).map((event) => event.toString());
+}
 
   // Call the method to ring the device
   static Future<void> ringDevice() async {
@@ -91,7 +48,6 @@ class KbeaconPlugin {
       print("Failed to ring device: ${e.message}");
     }
   }
-
   Future<List<String>> scanWifiNetworks(String deviceName, String proofOfPossession) async {
     try {
       final List<dynamic> networks = await _channel.invokeMethod('scanWifiNetworks', {
@@ -143,8 +99,21 @@ class KbeaconPlugin {
     }
   }
 
-  // Listen to scan results, scan failed, and BLE state changes
-  Stream<List<String>> get scanResultsStream => _scanResultStream ?? Stream.empty();
-  Stream<String> get scanFailedStream => _scanFailedStream ?? Stream.empty();
-  Stream<String> get bleStateChangeStream => _bleStateChangeStream ?? Stream.empty();
+ void listenToScanResults(
+      Function(List<String> beacons) onResult,
+      Function(String errorMessage) onScanFailed,
+      Function(String bleState) onBleStateChange) {
+    _channel.setMethodCallHandler((MethodCall call) async {
+      if (call.method == "onScanResult") {
+        List<String> beacons = List<String>.from(call.arguments);
+        onResult(beacons);
+      } else if (call.method == "onScanFailed") {
+        String errorMessage = call.arguments as String;
+        onScanFailed(errorMessage);
+      } else if (call.method == "onBleStateChange") {
+        String bleState = call.arguments as String;
+        onBleStateChange(bleState);
+      }
+    });
+  }
 }
