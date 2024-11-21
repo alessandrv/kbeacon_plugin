@@ -26,42 +26,58 @@ class _BeaconSelectionScreenState extends State<BeaconSelectionScreen> {
   // Add MobileScannerController
   final MobileScannerController scannerController = MobileScannerController();
 
+  late StreamSubscription<List<String>> _scanResultSubscription;
+  late StreamSubscription<String> _scanFailedSubscription;
+  late StreamSubscription<String> _bleStateSubscription;
+   @override
   void initState() {
-
     super.initState();
+    _kbeaconPlugin.initialize();
     _startScanning();
     _startBeaconCleanup();
-  }
-  void _startScanning() async {
-    await _kbeaconPlugin.startScan();
-    _kbeaconPlugin.listenToScanResults(
-      (List<String> beacons) {
-        setState(() {
-          _updateBeacons(beacons);
-        });
-      },
-      (String errorMessage) {
-        setState(() {
-          _error = errorMessage;
-        });
-      },
-      (String bleState) {
-        setState(() {
-          _bleState = bleState;
-        });
-      },
-    );
+    _listenToEvents();
   }
 
-  void _updateBeacons(List<String> beacons) {
+  void _listenToEvents() {
+    _scanResultSubscription = _kbeaconPlugin.scanResultsStream.listen((beacons) {
+      setState(() {
+        _updateBeacons(beacons);
+      });
+    });
+
+    _scanFailedSubscription = _kbeaconPlugin.scanFailedStream.listen((errorMessage) {
+      setState(() {
+        _error = errorMessage;
+      });
+    });
+
+    _bleStateSubscription = _kbeaconPlugin.bleStateChangeStream.listen((bleState) {
+      setState(() {
+        _bleState = bleState;
+      });
+    });
+  }
+   void _startScanning() async {
+    try {
+      String? scanResult = await _kbeaconPlugin.startScan();
+      print(scanResult);
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    }
+  }
+
+
+   void _updateBeacons(List<String> beacons) {
     final now = DateTime.now();
     for (var beacon in beacons) {
-      // Extract the MAC address and any additional information
+      // Parse the beacon info
       final beaconParts = beacon.split(", ");
-      if (beaconParts.length < 2) continue; // Ensure enough parts
-      final macAddress = beaconParts[0].split(": ")[1]; // "MAC: <address>"
-      final rssi = beaconParts[1].split(": ")[1]; // "RSSI: <value>"
-      final name = beaconParts.length > 2 ? beaconParts[2].split(": ")[1] : "Unknown"; // "Name: <name>"
+      if (beaconParts.length < 3) continue; // Ensure enough parts
+      final macAddress = beaconParts[0].split(": ").last; // "MAC: <address>"
+      final rssi = beaconParts[1].split(": ").last; // "RSSI: <value>"
+      final name = beaconParts[2].split(": ").last; // "Name: <name>"
 
       // Store beacon data
       _beaconMap[macAddress] = {
@@ -76,7 +92,8 @@ class _BeaconSelectionScreenState extends State<BeaconSelectionScreen> {
     _beacons = _beaconMap.keys.toList();
   }
 
-  void _startBeaconCleanup() {
+
+   void _startBeaconCleanup() {
     Timer.periodic(Duration(seconds: 1), (timer) {
       final now = DateTime.now();
       setState(() {
@@ -645,6 +662,7 @@ Widget _buildBeaconCard(String macAddress) {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).primaryColor,
@@ -659,7 +677,7 @@ Widget _buildBeaconCard(String macAddress) {
               color: Colors.white,
               size: 24.0,
             ),
-            onPressed: null,
+            onPressed: _refreshScan, // Make the button functional
             tooltip: 'Refresh Scan',
           ),
         ],
@@ -695,7 +713,6 @@ Widget _buildBeaconCard(String macAddress) {
     );
   }
 }
-
 // Custom painter for corner borders
 class CornerPainter1 extends CustomPainter {
   final double inset;

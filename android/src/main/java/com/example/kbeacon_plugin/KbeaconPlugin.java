@@ -54,8 +54,8 @@ public class KbeaconPlugin implements FlutterPlugin, MethodChannel.MethodCallHan
         context = binding.getApplicationContext();
         kBeaconsMgr = KBeaconsMgr.sharedBeaconManager(context);
 
-        channel = new MethodChannel(binding.getBinaryMessenger(), "kbeacon_plugin");
-        channel.setMethodCallHandler(this);
+        methodChannel = new MethodChannel(binding.getBinaryMessenger(), "kbeacon_plugin");
+        methodChannel.setMethodCallHandler(this);
 
         eventChannel = new EventChannel(binding.getBinaryMessenger(), "kbeacon_plugin_events");
         eventChannel.setStreamHandler(this);
@@ -96,21 +96,21 @@ public class KbeaconPlugin implements FlutterPlugin, MethodChannel.MethodCallHan
     }
 
     // EventChannel StreamHandler Methods
-    @Override
-    public void onListen(Object arguments, EventSink events) {
-        // Implement event streaming if needed
+     @Override
+    public void onListen(Object arguments, EventChannel.EventSink events) {
+        this.eventSink = events;
     }
 
     @Override
     public void onCancel(Object arguments) {
-        // Handle stream cancellation if needed
+        this.eventSink = null;
     }
+
 
     // MethodChannel MethodCallHandler
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
         switch (call.method) {
-            // KBeacon Methods
             case "startScan":
                 startKBeaconScan(result);
                 break;
@@ -260,27 +260,40 @@ public class KbeaconPlugin implements FlutterPlugin, MethodChannel.MethodCallHan
     }
 
     // KBeacon Manager Delegate Methods
-    @Override
+   @Override
     public void onBeaconDiscovered(KBeacon[] beacons) {
         List<String> beaconList = new ArrayList<>();
         for (KBeacon beacon : beacons) {
             String beaconInfo = "MAC: " + beacon.getMac() + ", RSSI: " + beacon.getRssi() + ", Name: " + beacon.getName();
             beaconList.add(beaconInfo);
         }
-        channel.invokeMethod("onScanResult", beaconList);
+        if (eventSink != null) {
+            eventSink.success(new HashMap<String, Object>() {{
+                put("onScanResult", beaconList);
+            }});
+        }
     }
 
     @Override
     public void onScanFailed(int errorCode) {
         String errorMessage = "Scan failed with error code: " + errorCode;
-        channel.invokeMethod("onScanFailed", errorMessage);
+        if (eventSink != null) {
+            eventSink.success(new HashMap<String, Object>() {{
+                put("onScanFailed", errorMessage);
+            }});
+        }
     }
 
     @Override
     public void onCentralBleStateChang(int bleState) {
         String bleStateMessage = "Bluetooth state changed: " + bleState;
-        channel.invokeMethod("onBleStateChange", bleStateMessage);
+        if (eventSink != null) {
+            eventSink.success(new HashMap<String, Object>() {{
+                put("onBleStateChange", bleStateMessage);
+            }});
+        }
     }
+
 
     // ActivityResultListener Methods
     @Override
