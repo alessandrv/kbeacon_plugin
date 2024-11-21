@@ -1,194 +1,210 @@
-// ios/Classes/MyPlugin.swift
+// KbeaconPlugin.swift
 
 import Flutter
 import UIKit
-import kbeaconlib2
+import CoreBluetooth
+import kbeaconlib2 // Ensure kbeaconlib2 is added via CocoaPods
 
-public class KbeaconPlugin: NSObject, FlutterPlugin, KBeaconMgrDelegate {
+@objc(KbeaconPlugin) // Exposes the class to Objective-C with the correct name
+public class KbeaconPlugin: NSObject, FlutterPlugin {
     
     private var methodChannel: FlutterMethodChannel
     private var eventChannel: FlutterEventChannel
     private var eventSink: FlutterEventSink?
     
-    private var kBeaconsMgr: KBeaconsMgr?
+    private var beaconManager: KBeaconsMgr
     private var connectedBeacon: KBeacon?
     
+    // To store method call results for asynchronous callbacks
+    private var connectionResults: [String: FlutterResult] = [:]
+    
+    // Initialize with registrar
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = KbeaconPlugin(registrar: registrar)
         registrar.addMethodCallDelegate(instance, channel: instance.methodChannel)
+        registrar.addApplicationDelegate(instance) // Ensure the plugin receives app lifecycle events if needed
+        instance.eventChannel.setStreamHandler(instance)
     }
     
+    // Initializer
     init(registrar: FlutterPluginRegistrar) {
         self.methodChannel = FlutterMethodChannel(name: "kbeacon_plugin", binaryMessenger: registrar.messenger())
         self.eventChannel = FlutterEventChannel(name: "kbeacon_plugin_events", binaryMessenger: registrar.messenger())
+        self.beaconManager = KBeaconsMgr.sharedBeaconManager
         super.init()
-        self.methodChannel.setMethodCallHandler(handle)
-        
-        self.eventChannel.setStreamHandler(self)
-        
-        self.kBeaconsMgr = KBeaconsMgr.sharedBeaconManager()
-        self.kBeaconsMgr?.delegate = self
+        self.beaconManager.delegate = self
     }
     
-    deinit {
-        self.kBeaconsMgr?.delegate = nil
-    }
-    
-    // Handle Method Calls
-    private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    // MARK: - FlutterPlugin Protocol Method
+    public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "startScan":
-            startKBeaconScan(result: result)
+            self.startScan(result: result)
         case "connectToDevice":
-            if let args = call.arguments as? [String: Any],
-               let macAddress = args["macAddress"] as? String,
-               let password = args["password"] as? String {
-                connectToKBeaconDevice(macAddress: macAddress, password: password, result: result)
-            } else {
-                result(FlutterError(code: "INVALID_ARGUMENTS", message: "Missing macAddress or password", details: nil))
+            guard let args = call.arguments as? [String: Any],
+                  let macAddress = args["macAddress"] as? String,
+                  let password = args["password"] as? String else {
+                result(FlutterError(code: "INVALID_ARGUMENTS", message: "macAddress and password are required", details: nil))
+                return
             }
+            self.connectToDevice(macAddress: macAddress, password: password, result: result)
         case "changeDeviceName":
-            if let args = call.arguments as? [String: Any],
-               let newName = args["newName"] as? String {
-                changeKBeaconDeviceName(newName: newName, result: result)
-            } else {
-                result(FlutterError(code: "INVALID_ARGUMENTS", message: "Missing newName", details: nil))
+            guard let args = call.arguments as? [String: Any],
+                  let newName = args["newName"] as? String else {
+                result(FlutterError(code: "INVALID_ARGUMENTS", message: "newName is required", details: nil))
+                return
             }
+            self.changeDeviceName(newName: newName, result: result)
         case "disconnectDevice":
-            disconnectFromKBeaconDevice(result: result)
+            self.disconnectDevice(result: result)
+        // Add additional method cases here as needed
         default:
             result(FlutterMethodNotImplemented)
         }
     }
-    
-    // Permission Handling
-    private func requestPermissions(completion: @escaping (Bool) -> Void) {
-        // iOS handles permissions differently. Ensure you have the required keys in Info.plist
-        // such as NSBluetoothAlwaysUsageDescription and NSLocationWhenInUseUsageDescription
-        
-        // Check Bluetooth authorization
-        if #available(iOS 13.0, *) {
-            let status = CBManager.authorization
-            switch status {
-            case .allowedAlways:
-                completion(true)
-            case .denied, .restricted:
-                completion(false)
-            case .notDetermined:
-                // Bluetooth permissions are requested automatically when starting a scan
-                completion(true)
-            @unknown default:
-                completion(false)
-            }
-        } else {
-            // Fallback for older iOS versions
-            completion(true)
-        }
-    }
-    
-    // KBeacon Methods
-    private func startKBeaconScan(result: @escaping FlutterResult) {
-        requestPermissions { granted in
-            if granted {
-                let scanResult = self.kBeaconsMgr?.startScanning()
-                if scanResult == 0 {
-                    result("Scan started successfully")
-                } else {
-                    result(FlutterError(code: "SCAN_FAILED", message: "Failed to start scanning", details: nil))
-                }
-            } else {
-                result(FlutterError(code: "PERMISSION_DENIED", message: "Required permissions not granted", details: nil))
-            }
-        }
-    }
-    
-    private func disconnectFromKBeaconDevice(result: @escaping FlutterResult) {
-        if let beacon = connectedBeacon, beacon.isConnected() {
-            beacon.disconnect()
-            connectedBeacon = nil
-            result("Device disconnected")
-        } else {
-            result(FlutterError(code: "NO_CONNECTED_DEVICE", message: "No device is connected", details: nil))
-        }
-    }
-    
-    private func connectToKBeaconDevice(macAddress: String, password: String, result: @escaping FlutterResult) {
-        guard let beacon = kBeaconsMgr?.getBeacon(macAddress) else {
-            result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Could not find device with MAC: \(macAddress)", details: nil))
-            return
-        }
-        
-        beacon.connect(password: password, timeout: 5000) { [weak self] state, reason in
-            guard let self = self else { return }
-            if state == .connected {
-                self.connectedBeacon = beacon
-                result("Connected to \(macAddress)")
-            } else if state == .disconnected {
-                result(FlutterError(code: "CONNECT_FAILED", message: "Failed to connect to device", details: nil))
-            }
-        }
-    }
-    
-    private func changeKBeaconDeviceName(newName: String, result: @escaping FlutterResult) {
-        guard let beacon = connectedBeacon, beacon.isConnected() else {
-            result(FlutterError(code: "NO_CONNECTED_DEVICE", message: "No device is connected", details: nil))
-            return
-        }
-        
-        let commonConfig = KBCfgCommon()
-        commonConfig.name = newName
-        
-        let configList: [KBCfgBase] = [commonConfig]
-        
-        beacon.modifyConfig(configList: configList) { success, error in
-            if success {
-                result("Device name changed to \(newName)")
-                
-                // Disconnect after a delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    if beacon.isConnected() {
-                        beacon.disconnect()
-                    }
-                }
-            } else {
-                result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: error?.localizedDescription))
-            }
-        }
-    }
-    
-    // KBeaconMgrDelegate Methods
-    public func onBeaconDiscovered(beacons: [KBeacon]) {
-        var beaconList: [[String: Any]] = []
-        for beacon in beacons {
-            let beaconInfo: [String: Any] = [
-                "mac": beacon.mac,
-                "rssi": beacon.rssi,
-                "name": beacon.name
-            ]
-            beaconList.append(beaconInfo)
-        }
-        eventSink?(["onScanResult": beaconList])
-    }
-    
-    public func onScanFailed(errorCode: Int) {
-        let errorMessage = "Scan failed with error code: \(errorCode)"
-        eventSink?(["onScanFailed": errorMessage])
-    }
-    
-    public func onCentralBleStateChange(bleState: Int) {
-        let bleStateMessage = "Bluetooth state changed: \(bleState)"
-        eventSink?(["onBleStateChange": bleStateMessage])
-    }
 }
 
 extension KbeaconPlugin: FlutterStreamHandler {
-    public func onListen(withArguments arguments: Any?, eventSink: @escaping FlutterEventSink) -> FlutterError? {
-        self.eventSink = eventSink
+    public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+        self.eventSink = events
         return nil
     }
     
     public func onCancel(withArguments arguments: Any?) -> FlutterError? {
         self.eventSink = nil
         return nil
+    }
+}
+
+extension KbeaconPlugin: ConnStateDelegate {
+    public func onConnStateChange(_ beacon: KBeacon, state: KBConnState, evt: KBConnEvtReason) {
+        switch state {
+        case .Connected:
+            connectedBeacon = beacon
+            if let mac = beacon.mac, let result = connectionResults[mac] {
+                result("Connected to device \(mac)")
+                connectionResults.removeValue(forKey: mac)
+            }
+            eventSink?(["connectionState": "connected", "macAddress": beacon.mac ?? ""])
+        case .Disconnected:
+            if let mac = beacon.mac, let result = connectionResults[mac] {
+                result(FlutterError(code: "CONNECT_FAILED", message: "Failed to connect to device \(mac)", details: nil))
+                connectionResults.removeValue(forKey: mac)
+            }
+            eventSink?(["connectionState": "disconnected", "macAddress": beacon.mac ?? ""])
+        case .Connecting:
+            eventSink?(["connectionState": "connecting", "macAddress": beacon.mac ?? ""])
+        case .Disconnecting:
+            eventSink?(["connectionState": "disconnecting", "macAddress": beacon.mac ?? ""])
+        }
+    }
+}
+
+extension KbeaconPlugin: KBeaconMgrDelegate {
+    public func onBeaconDiscovered(beacons: [KBeacon]) {
+        var beaconList: [[String: Any]] = []
+        for beacon in beacons {
+            let beaconInfo: [String: Any] = [
+                "macAddress": beacon.mac ?? "",
+                "rssi": beacon.rssi,
+                "name": beacon.name ?? "Unknown"
+            ]
+            beaconList.append(beaconInfo)
+        }
+        eventSink?(["onScanResult": beaconList])
+    }
+    
+    public func onCentralBleStateChange(newState: BLECentralMgrState) {
+        // Map BLECentralMgrState to descriptive string or integer
+        eventSink?(["bluetoothState": newState.rawValue])
+    }
+}
+
+extension KbeaconPlugin: NotifyDataDelegate {
+    public func onNotifyDataReceived(_ beacon: KBeacon, evt: Int, data: Data) {
+        // Handle notify data and send to Flutter
+        // You can parse the data as needed and send meaningful information
+        let dataString = data.base64EncodedString()
+        eventSink?([
+            "onNotifyDataReceived": [
+                "macAddress": beacon.mac ?? "",
+                "event": evt,
+                "data": dataString
+            ]
+        ])
+    }
+}
+
+extension KbeaconPlugin {
+    
+    // Start scanning for KBeacon devices
+    private func startScan(result: @escaping FlutterResult) {
+        // Clear existing beacons
+        beaconManager.clearBeacons()
+        
+        // Start scanning
+        let scanStarted = beaconManager.startScanning()
+        if scanStarted {
+            result("Scan started successfully")
+        } else {
+            result(FlutterError(code: "SCAN_FAILED", message: "Failed to start scanning", details: nil))
+        }
+    }
+    
+    // Connect to a specific KBeacon device
+    private func connectToDevice(macAddress: String, password: String, result: @escaping FlutterResult) {
+        guard let beacon = beaconManager.beacons[macAddress] else {
+            result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device with MAC \(macAddress) not found", details: nil))
+            return
+        }
+        
+        // Store the result to be called in the delegate
+        connectionResults[macAddress] = result
+        
+        // Set self as the delegate to receive connection state changes
+        beacon.delegate = self
+        
+        // Initiate connection
+        // Removed 'password:' label to match method signature
+        let connectSuccess = beacon.connect(password, timeout: 5000, delegate: self)
+        if connectSuccess {
+            result("Connecting to device \(macAddress)")
+        } else {
+            result(FlutterError(code: "CONNECT_INIT_FAILED", message: "Failed to initiate connection", details: nil))
+        }
+    }
+    
+    // Change the device name
+    private func changeDeviceName(newName: String, result: @escaping FlutterResult) {
+        guard let beacon = connectedBeacon, beacon.isConnected() else {
+            result(FlutterError(code: "NO_CONNECTED_DEVICE", message: "No device is connected", details: nil))
+            return
+        }
+        
+        // Create a common config with the new name
+        let newConfig = KBCfgCommon()
+        newConfig.setName(newName)
+        
+        // Modify the device config
+        beacon.modifyConfig(array: [newConfig]) { success, error in
+            if success {
+                result("Device name changed to \(newName)")
+            } else {
+                // Changed 'error?.message' to 'error?.errorDescription'
+                result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: error?.errorDescription))
+            }
+        }
+    }
+    
+    // Disconnect from the connected device
+    private func disconnectDevice(result: @escaping FlutterResult) {
+        guard let beacon = connectedBeacon, beacon.isConnected() else {
+            result(FlutterError(code: "NO_CONNECTED_DEVICE", message: "No device is connected", details: nil))
+            return
+        }
+        
+        beacon.disconnect()
+        connectedBeacon = nil
+        result("Device disconnected")
     }
 }

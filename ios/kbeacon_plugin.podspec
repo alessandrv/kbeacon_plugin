@@ -29,8 +29,6 @@ Pod::Spec.new do |s|
 
   # Add dependencies
   s.dependency 'kbeaconlib2', '~> 1.1.8' # Ensure this is the correct pod name and version
-  s.dependency 'ESPProvision', '~> 3.0.2' # Ensure this is the correct pod name and version
-  s.dependency 'EventBusSwift', '~> 0.2.1' # Add EventBusSwift for event handling
 
   # Uncomment if you have resource bundles
   # s.resource_bundles = {'kbeacon_plugin_privacy' => ['Resources/PrivacyInfo.xcprivacy']}

@@ -1,5 +1,8 @@
 PODS:
   - CryptoSwift (1.8.3)
+  - esp_provisioning_wifi (0.0.5):
+    - ESPProvision
+    - Flutter
   - ESPProvision (3.0.2):
     - ESPProvision/Core (= 3.0.2)
   - ESPProvision/Core (3.0.2):
@@ -38,8 +41,6 @@ PODS:
   - integration_test (0.0.1):
     - Flutter
   - kbeacon_plugin (0.0.1):
-    - ESPProvision (~> 3.0.2)
-    - EventBusSwift (~> 0.2.1)
     - Flutter
     - kbeaconlib2 (~> 1.1.8)
   - kbeaconlib2 (1.1.8):
@@ -84,6 +85,7 @@ PODS:
     - Flutter
 
 DEPENDENCIES:
+  - esp_provisioning_wifi (from `.symlinks/plugins/esp_provisioning_wifi/ios`)
   - ESPProvision (~> 3.0.2)
   - EventBusSwift (~> 0.2.1)
   - Flutter (from `Flutter`)
@@ -119,6 +121,8 @@ SPEC REPOS:
     - SwiftProtobuf
 
 EXTERNAL SOURCES:
+  esp_provisioning_wifi:
+    :path: ".symlinks/plugins/esp_provisioning_wifi/ios"
   Flutter:
     :path: Flutter
   flutter_blue_plus:
@@ -142,6 +146,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   CryptoSwift: 967f37cea5a3294d9cce358f78861652155be483
+  esp_provisioning_wifi: ea22afc8996d445143b122a80eb6202acba6d74f
   ESPProvision: ffc50093a0a3e72a80d03116bbe0d0d4bb4252b7
   EventBusSwift: 706e35ce202f7576b87c55b5ec78b22ad547e50d
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
@@ -153,7 +158,7 @@ SPEC CHECKSUMS:
   GoogleUtilitiesComponents: 679b2c881db3b615a2777504623df6122dd20afe
   GTMSessionFetcher: 5aea5ba6bd522a239e236100971f10cb71b96ab6
   integration_test: 252f60fa39af5e17c3aa9899d35d908a0721b573
-  kbeacon_plugin: 54c1be1a10d99a50cd8d0cf4ef60a96b96d9add0
+  kbeacon_plugin: 06eec0960047bffc6852e275a3a52d3cec200bdf
   kbeaconlib2: 69a7aab63626707bd26f3d02073b0fc1ebf97441
   MLImage: 1824212150da33ef225fbd3dc49f184cf611046c
   MLKitBarcodeScanning: 10ca0845a6d15f2f6e911f682a1998b68b973e8b
@@ -169,6 +174,6 @@ SPEC CHECKSUMS:
   url_launcher_ios: 5334b05cef931de560670eeae103fd3e431ac3fe
   wakelock_plus: 78ec7c5b202cab7761af8e2b2b3d0671be6c4ae1
 
-PODFILE CHECKSUM: c8daa41e2e05a9dc274fd0727dc342a2787abbe0
+PODFILE CHECKSUM: 4bc245d5107ea39af97954127f32097e989c7e5e
 
 COCOAPODS: 1.16.2
