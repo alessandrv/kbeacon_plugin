@@ -100,20 +100,31 @@ Stream<String> scanBleDevicesAsStream(String prefix) {
   }
 
   void listenToScanResults(
-      Function(List<String> beacons) onResult,
-      Function(String errorMessage) onScanFailed,
-      Function(String bleState) onBleStateChange) {
-    _channel.setMethodCallHandler((MethodCall call) async {
-      if (call.method == "onScanResult") {
-        List<String> beacons = List<String>.from(call.arguments);
-        onResult(beacons);
-      } else if (call.method == "onScanFailed") {
-        String errorMessage = call.arguments as String;
-        onScanFailed(errorMessage);
-      } else if (call.method == "onBleStateChange") {
-        String bleState = call.arguments as String;
-        onBleStateChange(bleState);
+    Function(List<String> beacons) onResult,
+    Function(String errorMessage) onScanFailed,
+    Function(String bleState) onBleStateChange,
+  ) {
+    _eventChannel.receiveBroadcastStream().listen((event) {
+      if (event is Map) {
+        if (event.containsKey("onScanResult")) {
+          List<dynamic> beaconList = event["onScanResult"];
+          List<String> beacons = beaconList.map((e) {
+            final mac = e["macAddress"] ?? "Unknown MAC";
+            final rssi = e["rssi"]?.toString() ?? "N/A";
+            final name = e["name"] ?? "Unknown";
+            return "MAC: $mac, RSSI: $rssi, Name: $name";
+          }).toList();
+          onResult(beacons);
+        } else if (event.containsKey("onScanFailed")) {
+          String errorMessage = event["onScanFailed"] ?? "Unknown error";
+          onScanFailed(errorMessage);
+        } else if (event.containsKey("bluetoothState")) {
+          String bleState = event["bluetoothState"]?.toString() ?? "Unknown";
+          onBleStateChange(bleState);
+        }
       }
+    }, onError: (error) {
+      onScanFailed(error.toString());
     });
   }
 }

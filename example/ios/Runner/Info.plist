@@ -3,12 +3,17 @@
 <plist version="1.0">
 <dict>
 <key>NSBluetoothAlwaysUsageDescription</key>
-<string>We need access to Bluetooth to communicate with KBeacon devices.</string>
+<string>This app uses Bluetooth to connect to beacons.</string>
 <key>NSBluetoothPeripheralUsageDescription</key>
-<string>We need access to Bluetooth to communicate with KBeacon devices.</string>
+<string>This app uses Bluetooth to connect to beacons.</string>
 <key>NSLocationWhenInUseUsageDescription</key>
-<string>We need access to your location to scan for Bluetooth devices.</string>
-
+<string>Location access is required to use Bluetooth features.</string>
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>Location access is required to use Bluetooth features.</string>
+<key>UIBackgroundModes</key>
+<array>
+    <string>bluetooth-central</string>
+</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

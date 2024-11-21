@@ -1,5 +1,3 @@
-// KbeaconPlugin.swift
-
 import Flutter
 import UIKit
 import CoreBluetooth
@@ -22,21 +20,24 @@ public class KbeaconPlugin: NSObject, FlutterPlugin {
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = KbeaconPlugin(registrar: registrar)
         registrar.addMethodCallDelegate(instance, channel: instance.methodChannel)
-        registrar.addApplicationDelegate(instance) // Ensure the plugin receives app lifecycle events if needed
-        instance.eventChannel.setStreamHandler(instance)
+        registrar.addApplicationDelegate(instance)
+        instance.eventChannel.setStreamHandler(instance) // Ensure this matches Flutter
+        print("KbeaconPlugin registered with Flutter")
     }
     
-    // Initializer
+    // Update the initializer to use the correct channel name
     init(registrar: FlutterPluginRegistrar) {
         self.methodChannel = FlutterMethodChannel(name: "kbeacon_plugin", binaryMessenger: registrar.messenger())
-        self.eventChannel = FlutterEventChannel(name: "kbeacon_plugin_events", binaryMessenger: registrar.messenger())
+        self.eventChannel = FlutterEventChannel(name: "flutter_esp_ble_prov/scanBleDevices", binaryMessenger: registrar.messenger()) // Updated name
         self.beaconManager = KBeaconsMgr.sharedBeaconManager
         super.init()
         self.beaconManager.delegate = self
+        print("KbeaconPlugin initialized")
     }
     
     // MARK: - FlutterPlugin Protocol Method
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        print("Received method call: \(call.method)")
         switch call.method {
         case "startScan":
             self.startScan(result: result)
@@ -44,6 +45,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin {
             guard let args = call.arguments as? [String: Any],
                   let macAddress = args["macAddress"] as? String,
                   let password = args["password"] as? String else {
+                print("Invalid arguments for connectToDevice")
                 result(FlutterError(code: "INVALID_ARGUMENTS", message: "macAddress and password are required", details: nil))
                 return
             }
@@ -51,6 +53,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin {
         case "changeDeviceName":
             guard let args = call.arguments as? [String: Any],
                   let newName = args["newName"] as? String else {
+                print("Invalid arguments for changeDeviceName")
                 result(FlutterError(code: "INVALID_ARGUMENTS", message: "newName is required", details: nil))
                 return
             }
@@ -59,6 +62,7 @@ public class KbeaconPlugin: NSObject, FlutterPlugin {
             self.disconnectDevice(result: result)
         // Add additional method cases here as needed
         default:
+            print("Method not implemented: \(call.method)")
             result(FlutterMethodNotImplemented)
         }
     }
@@ -66,11 +70,13 @@ public class KbeaconPlugin: NSObject, FlutterPlugin {
 
 extension KbeaconPlugin: FlutterStreamHandler {
     public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+        print("Event channel onListen called")
         self.eventSink = events
         return nil
     }
     
     public func onCancel(withArguments arguments: Any?) -> FlutterError? {
+        print("Event channel onCancel called")
         self.eventSink = nil
         return nil
     }
@@ -78,16 +84,19 @@ extension KbeaconPlugin: FlutterStreamHandler {
 
 extension KbeaconPlugin: ConnStateDelegate {
     public func onConnStateChange(_ beacon: KBeacon, state: KBConnState, evt: KBConnEvtReason) {
+        print("Connection state changed: \(state.rawValue), Event: \(evt.rawValue)")
         switch state {
         case .Connected:
             connectedBeacon = beacon
             if let mac = beacon.mac, let result = connectionResults[mac] {
+                print("Successfully connected to device \(mac)")
                 result("Connected to device \(mac)")
                 connectionResults.removeValue(forKey: mac)
             }
             eventSink?(["connectionState": "connected", "macAddress": beacon.mac ?? ""])
         case .Disconnected:
             if let mac = beacon.mac, let result = connectionResults[mac] {
+                print("Failed to connect to device \(mac)")
                 result(FlutterError(code: "CONNECT_FAILED", message: "Failed to connect to device \(mac)", details: nil))
                 connectionResults.removeValue(forKey: mac)
             }
@@ -101,13 +110,18 @@ extension KbeaconPlugin: ConnStateDelegate {
 }
 
 extension KbeaconPlugin: KBeaconMgrDelegate {
-    public func onBeaconDiscovered(beacons: [KBeacon]) {
+       public func onBeaconDiscovered(beacons: [KBeacon]) {
+        print("Beacons discovered: \(beacons.count)")
         var beaconList: [[String: Any]] = []
         for beacon in beacons {
+            let mac = beacon.mac ?? "nil"
+            let rssi = beacon.rssi
+            let name = beacon.name ?? "Unknown"
+            print("Discovered Beacon - MAC: \(mac), RSSI: \(rssi), Name: \(name)")
             let beaconInfo: [String: Any] = [
-                "macAddress": beacon.mac ?? "",
-                "rssi": beacon.rssi,
-                "name": beacon.name ?? "Unknown"
+                "macAddress": mac,
+                "rssi": rssi,
+                "name": name
             ]
             beaconList.append(beaconInfo)
         }
@@ -115,6 +129,7 @@ extension KbeaconPlugin: KBeaconMgrDelegate {
     }
     
     public func onCentralBleStateChange(newState: BLECentralMgrState) {
+        print("BLE Central Manager state changed: \(newState.rawValue)")
         // Map BLECentralMgrState to descriptive string or integer
         eventSink?(["bluetoothState": newState.rawValue])
     }
@@ -122,9 +137,8 @@ extension KbeaconPlugin: KBeaconMgrDelegate {
 
 extension KbeaconPlugin: NotifyDataDelegate {
     public func onNotifyDataReceived(_ beacon: KBeacon, evt: Int, data: Data) {
-        // Handle notify data and send to Flutter
-        // You can parse the data as needed and send meaningful information
         let dataString = data.base64EncodedString()
+        print("Notify data received from \(beacon.mac ?? ""): Event \(evt), Data \(dataString)")
         eventSink?([
             "onNotifyDataReceived": [
                 "macAddress": beacon.mac ?? "",
@@ -139,21 +153,26 @@ extension KbeaconPlugin {
     
     // Start scanning for KBeacon devices
     private func startScan(result: @escaping FlutterResult) {
+        print("Starting scan for beacons")
         // Clear existing beacons
         beaconManager.clearBeacons()
         
         // Start scanning
         let scanStarted = beaconManager.startScanning()
         if scanStarted {
+            print("Scan started successfully")
             result("Scan started successfully")
         } else {
+            print("Failed to start scanning")
             result(FlutterError(code: "SCAN_FAILED", message: "Failed to start scanning", details: nil))
         }
     }
     
     // Connect to a specific KBeacon device
     private func connectToDevice(macAddress: String, password: String, result: @escaping FlutterResult) {
+        print("Attempting to connect to device \(macAddress) with password \(password)")
         guard let beacon = beaconManager.beacons[macAddress] else {
+            print("Device with MAC \(macAddress) not found")
             result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device with MAC \(macAddress) not found", details: nil))
             return
         }
@@ -165,18 +184,22 @@ extension KbeaconPlugin {
         beacon.delegate = self
         
         // Initiate connection
-        // Removed 'password:' label to match method signature
         let connectSuccess = beacon.connect(password, timeout: 5000, delegate: self)
+        print("Connection initiation success: \(connectSuccess)")
         if connectSuccess {
+            print("Initiated connection to device \(macAddress)")
             result("Connecting to device \(macAddress)")
         } else {
+            print("Failed to initiate connection to device \(macAddress)")
             result(FlutterError(code: "CONNECT_INIT_FAILED", message: "Failed to initiate connection", details: nil))
         }
     }
     
     // Change the device name
     private func changeDeviceName(newName: String, result: @escaping FlutterResult) {
+        print("Changing device name to \(newName)")
         guard let beacon = connectedBeacon, beacon.isConnected() else {
+            print("No connected device to change name")
             result(FlutterError(code: "NO_CONNECTED_DEVICE", message: "No device is connected", details: nil))
             return
         }
@@ -188,9 +211,10 @@ extension KbeaconPlugin {
         // Modify the device config
         beacon.modifyConfig(array: [newConfig]) { success, error in
             if success {
+                print("Device name changed to \(newName)")
                 result("Device name changed to \(newName)")
             } else {
-                // Changed 'error?.message' to 'error?.errorDescription'
+                print("Failed to change device name: \(error?.errorDescription ?? "Unknown error")")
                 result(FlutterError(code: "NAME_CHANGE_FAILED", message: "Failed to change device name", details: error?.errorDescription))
             }
         }
@@ -198,13 +222,16 @@ extension KbeaconPlugin {
     
     // Disconnect from the connected device
     private func disconnectDevice(result: @escaping FlutterResult) {
+        print("Attempting to disconnect device")
         guard let beacon = connectedBeacon, beacon.isConnected() else {
+            print("No connected device to disconnect")
             result(FlutterError(code: "NO_CONNECTED_DEVICE", message: "No device is connected", details: nil))
             return
         }
         
         beacon.disconnect()
         connectedBeacon = nil
+        print("Device disconnected")
         result("Device disconnected")
     }
 }
