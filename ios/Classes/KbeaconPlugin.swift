@@ -114,25 +114,26 @@ extension KbeaconPlugin: ConnStateDelegate {
 }
 
 extension KbeaconPlugin: KBeaconMgrDelegate {
-   public func onBeaconDiscovered(beacons: [KBeacon]) {
+     public func onBeaconDiscovered(beacons: [KBeacon]) {
         print("Beacons discovered: \(beacons.count)")
-        var beaconList: [String] = [] // Changed to array of strings to match Android
+        var beaconList: [String] = []
         
         for beacon in beacons {
             let mac = beacon.mac ?? "unknown"
             let rssi = beacon.rssi
             let name = beacon.name ?? "Unknown"
             
-            // Format the beacon info string to match Android format
+            // Format beacon info string to match Android format
             let beaconInfo = "MAC: \(mac), RSSI: \(rssi), Name: \(name)"
             beaconList.append(beaconInfo)
             
             print("Discovered Beacon: \(beaconInfo)")
         }
         
-        // Send the array of strings through the event sink
+        // Send array of strings through event sink
         eventSink?(["onScanResult": beaconList])
     }
+    
     
     public func onCentralBleStateChange(newState: BLECentralMgrState) {
         print("BLE Central Manager state changed: \(newState.rawValue)")
@@ -160,46 +161,17 @@ extension KbeaconPlugin {
     // Start scanning for KBeacon devices
     private func startScan(result: @escaping FlutterResult) {
         print("Starting scan for beacons")
-        
-        // Check Bluetooth authorization status
-        if #available(iOS 13.0, *) {
-            switch CBCentralManager().authorization {
-            case .allowedAlways, .allowed:
-                break
-            case .denied, .restricted:
-                result(FlutterError(code: "PERMISSION_DENIED",
-                                  message: "Bluetooth permission denied",
-                                  details: nil))
-                return
-            case .notDetermined:
-                // Request permission here if needed
-                break
-            @unknown default:
-                break
-            }
-        }
-        
-        // Clear existing beacons and start fresh scan
+        // Clear existing beacons
         beaconManager.clearBeacons()
         
-        // Ensure Bluetooth is powered on
-        if beaconManager.centralMgrState != .poweredOn {
-            result(FlutterError(code: "BLUETOOTH_OFF",
-                              message: "Bluetooth is not powered on",
-                              details: nil))
-            return
-        }
-        
-        // Start scanning with error handling
-        do {
-            try beaconManager.startScanning()
+        // Start scanning
+        let scanStarted = beaconManager.startScanning()
+        if scanStarted {
             print("Scan started successfully")
             result("Scan started successfully")
-        } catch {
-            print("Failed to start scanning: \(error)")
-            result(FlutterError(code: "SCAN_FAILED",
-                              message: "Failed to start scanning: \(error.localizedDescription)",
-                              details: nil))
+        } else {
+            print("Failed to start scanning")
+            result(FlutterError(code: "SCAN_FAILED", message: "Failed to start scanning", details: nil))
         }
     }
     
@@ -268,11 +240,5 @@ extension KbeaconPlugin {
         connectedBeacon = nil
         print("Device disconnected")
         result("Device disconnected")
-    }
-}
-extension KbeaconPlugin {
-    private func handleScanError(_ error: Error) {
-        let errorMessage = "Scan failed with error: \(error.localizedDescription)"
-        eventSink?(["onScanFailed": errorMessage])
     }
 }
