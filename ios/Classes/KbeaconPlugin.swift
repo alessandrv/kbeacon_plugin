@@ -110,28 +110,35 @@ extension KbeaconPlugin: ConnStateDelegate {
 }
 
 extension KbeaconPlugin: KBeaconMgrDelegate {
+<<<<<<< HEAD
        public func onBeaconDiscovered(beacons: [KBeacon]) {
+=======
+     public func onBeaconDiscovered(beacons: [KBeacon]) {
+>>>>>>> 68b227f8fbfab1383fb9fe9be1827a0a6939fd34
         print("Beacons discovered: \(beacons.count)")
-        var beaconList: [[String: Any]] = []
+        var beaconList: [String] = []
+        
         for beacon in beacons {
-            let mac = beacon.mac ?? "nil"
+            let mac = beacon.mac ?? "unknown"
             let rssi = beacon.rssi
             let name = beacon.name ?? "Unknown"
-            print("Discovered Beacon - MAC: \(mac), RSSI: \(rssi), Name: \(name)")
-            let beaconInfo: [String: Any] = [
-                "macAddress": mac,
-                "rssi": rssi,
-                "name": name
-            ]
+            
+            // Format beacon info string to match Android format
+            let beaconInfo = "MAC: \(mac), RSSI: \(rssi), Name: \(name)"
             beaconList.append(beaconInfo)
+            
+            print("Discovered Beacon: \(beaconInfo)")
         }
+        
+        // Send array of strings through event sink
         eventSink?(["onScanResult": beaconList])
     }
     
+    
     public func onCentralBleStateChange(newState: BLECentralMgrState) {
         print("BLE Central Manager state changed: \(newState.rawValue)")
-        // Map BLECentralMgrState to descriptive string or integer
-        eventSink?(["bluetoothState": newState.rawValue])
+        let stateMessage = "Bluetooth state changed: \(newState.rawValue)"
+        eventSink?(["onBleStateChange": stateMessage])
     }
 }
 
