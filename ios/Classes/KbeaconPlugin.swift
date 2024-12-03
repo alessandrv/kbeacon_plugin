@@ -115,24 +115,26 @@ extension KbeaconPlugin: ConnStateDelegate {
 
 extension KbeaconPlugin: KBeaconMgrDelegate {
      public func onBeaconDiscovered(beacons: [KBeacon]) {
-        print("Beacons discovered: \(beacons.count)")
-        var beaconList: [String] = []
+    print("Beacons discovered: \(beacons.count)")
+    var beaconList: [[String: Any]] = []
+    
+    for beacon in beacons {
+        let beaconData: [String: Any] = [
+            "mac": beacon.mac ?? "unknown",
+            "rssi": beacon.rssi,
+            "name": beacon.name ?? "Unknown",
+            "uuid": beacon.uuidString ?? "unknown", // Add more properties as needed
+            // Include other relevant properties here
+        ]
+        beaconList.append(beaconData)
         
-        for beacon in beacons {
-            let mac = beacon.mac ?? "unknown"
-            let rssi = beacon.rssi
-            let name = beacon.name ?? "Unknown"
-            
-            // Format beacon info string to match Android format
-            let beaconInfo = "MAC: \(mac), RSSI: \(rssi), Name: \(name)"
-            beaconList.append(beaconInfo)
-            
-            print("Discovered Beacon: \(beaconInfo)")
-        }
-        
-        // Send array of strings through event sink
-        eventSink?(["onScanResult": beaconList])
+        print("Discovered Beacon: \(beaconData)")
     }
+    
+    // Send array of dictionaries through event sink
+    eventSink?(["onScanResult": beaconList])
+}
+
     
     
     public func onCentralBleStateChange(newState: BLECentralMgrState) {
