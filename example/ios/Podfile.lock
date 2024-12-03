@@ -1,8 +1,5 @@
 PODS:
   - CryptoSwift (1.8.3)
-  - esp_provisioning_wifi (0.0.5):
-    - ESPProvision
-    - Flutter
   - ESPProvision (3.0.2):
     - ESPProvision/Core (= 3.0.2)
   - ESPProvision/Core (3.0.2):
@@ -10,6 +7,9 @@ PODS:
   - EventBusSwift (0.2.1)
   - Flutter (1.0.0)
   - flutter_blue_plus (0.0.1):
+    - Flutter
+  - flutter_esp_ble_prov (0.0.1):
+    - ESPProvision
     - Flutter
   - GoogleDataTransport (9.4.1):
     - GoogleUtilities/Environment (~> 7.7)
@@ -85,11 +85,11 @@ PODS:
     - Flutter
 
 DEPENDENCIES:
-  - esp_provisioning_wifi (from `.symlinks/plugins/esp_provisioning_wifi/ios`)
   - ESPProvision (~> 3.0.2)
   - EventBusSwift (~> 0.2.1)
   - Flutter (from `Flutter`)
   - flutter_blue_plus (from `.symlinks/plugins/flutter_blue_plus/ios`)
+  - flutter_esp_ble_prov (from `.symlinks/plugins/flutter_esp_ble_prov/ios`)
   - integration_test (from `.symlinks/plugins/integration_test/ios`)
   - kbeacon_plugin (from `.symlinks/plugins/kbeacon_plugin/ios`)
   - kbeaconlib2 (~> 1.1.8)
@@ -121,12 +121,12 @@ SPEC REPOS:
     - SwiftProtobuf
 
 EXTERNAL SOURCES:
-  esp_provisioning_wifi:
-    :path: ".symlinks/plugins/esp_provisioning_wifi/ios"
   Flutter:
     :path: Flutter
   flutter_blue_plus:
     :path: ".symlinks/plugins/flutter_blue_plus/ios"
+  flutter_esp_ble_prov:
+    :path: ".symlinks/plugins/flutter_esp_ble_prov/ios"
   integration_test:
     :path: ".symlinks/plugins/integration_test/ios"
   kbeacon_plugin:
@@ -146,11 +146,11 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   CryptoSwift: 967f37cea5a3294d9cce358f78861652155be483
-  esp_provisioning_wifi: ea22afc8996d445143b122a80eb6202acba6d74f
   ESPProvision: ffc50093a0a3e72a80d03116bbe0d0d4bb4252b7
   EventBusSwift: 706e35ce202f7576b87c55b5ec78b22ad547e50d
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
   flutter_blue_plus: 4837da7d00cf5d441fdd6635b3a57f936778ea96
+  flutter_esp_ble_prov: a18fa58626e98c50e663a3d054dd99b9dde6b84d
   GoogleDataTransport: 6c09b596d841063d76d4288cc2d2f42cc36e1e2a
   GoogleMLKit: 97ac7af399057e99182ee8edfa8249e3226a4065
   GoogleToolboxForMac: d1a2cbf009c453f4d6ded37c105e2f67a32206d8
