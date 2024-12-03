@@ -27,13 +27,14 @@ public class KbeaconPlugin: NSObject, FlutterPlugin {
     
     // Update the initializer to use the correct channel name
     init(registrar: FlutterPluginRegistrar) {
-        self.methodChannel = FlutterMethodChannel(name: "kbeacon_plugin", binaryMessenger: registrar.messenger())
-        self.eventChannel = FlutterEventChannel(name: "kbeacon_plugin_events", binaryMessenger: registrar.messenger()) // Updated to match Android
-        self.beaconManager = KBeaconsMgr.sharedBeaconManager
-        super.init()
-        self.beaconManager.delegate = self
-        print("KbeaconPlugin initialized")
-    }
+    self.methodChannel = FlutterMethodChannel(name: "kbeacon_plugin", binaryMessenger: registrar.messenger())
+    self.eventChannel = FlutterEventChannel(name: "flutter_esp_ble_prov/scanBleDevices", binaryMessenger: registrar.messenger()) // Updated name
+    self.beaconManager = KBeaconsMgr.sharedBeaconManager
+    super.init()
+    self.beaconManager.delegate = self
+    print("KbeaconPlugin initialized")
+}
+
     
     // MARK: - FlutterPlugin Protocol Method
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -114,27 +115,29 @@ extension KbeaconPlugin: ConnStateDelegate {
 }
 
 extension KbeaconPlugin: KBeaconMgrDelegate {
-     public func onBeaconDiscovered(beacons: [KBeacon]) {
+    public func onBeaconDiscovered(beacons: [KBeacon]) {
     print("Beacons discovered: \(beacons.count)")
     var beaconList: [[String: Any]] = []
-    
-    for beacon in beacons {
-        let beaconData: [String: Any] = [
-            "mac": beacon.mac ?? "unknown",
-            "rssi": beacon.rssi,
-            "name": beacon.name ?? "Unknown",
-            "uuid": beacon.uuidString ?? "unknown", // Add more properties as needed
-            // Include other relevant properties here
-        ]
-        beaconList.append(beaconData)
-        
-        print("Discovered Beacon: \(beaconData)")
-    }
-    
-    // Send array of dictionaries through event sink
-    eventSink?(["onScanResult": beaconList])
-}
 
+    for beacon in beacons {
+      let mac = beacon.mac ?? "unknown"
+      let rssi = beacon.rssi
+      let name = beacon.name ?? "Unknown"
+
+      // Create a dictionary for each beacon
+      let beaconInfo: [String: Any] = [
+        "macAddress": mac,
+        "rssi": rssi,
+        "name": name
+      ]
+      beaconList.append(beaconInfo)
+
+      print("Discovered Beacon: \(beaconInfo)")
+    }
+
+    // Send array of beacon dictionaries through event sink
+    eventSink?(["onScanResult": beaconList])
+  }
     
     
     public func onCentralBleStateChange(newState: BLECentralMgrState) {

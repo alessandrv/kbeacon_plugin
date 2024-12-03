@@ -1,44 +1,88 @@
-import 'dart:async';
 import 'package:flutter/services.dart';
-import 'bacon.dart';
 
 class KbeaconPlugin {
-  static const MethodChannel _methodChannel = MethodChannel('kbeacon_plugin');
-  static const EventChannel _eventChannel = EventChannel('kbeacon_plugin_events');
+  static const MethodChannel _channel = MethodChannel('kbeacon_plugin');
+  static const EventChannel _eventChannel = EventChannel('flutter_esp_ble_prov/scanBleDevices');
 
-  // Singleton pattern if desired
-  static final KbeaconPlugin _instance = KbeaconPlugin._internal();
-
-  factory KbeaconPlugin() {
-    return _instance;
+ // New method to start scanning for advertising messages
+  Future<void> checkAdvertisingMessages() async {
+    try {
+      await _channel.invokeMethod('checkAdvertisingMessages');
+    } on PlatformException catch (e) {
+      throw 'Failed to check advertising messages: ${e.message}';
+    }
   }
 
-  KbeaconPlugin._internal();
+  // Stream of advertising messages
+  Stream<String> listenToAdvertisingMessages() {
+    return _eventChannel
+        .receiveBroadcastStream()
+        .map((event) => event.toString());
+  }
+  // ESP BLE Provisioning Methods
 
-  // Start scanning for beacons
+@pragma('vm:entry-point')
+  Future<void> scanBleDevices(String prefix) async {
+    try {
+      await _channel.invokeMethod('scanBleDevices', {'prefix': prefix});
+    } on PlatformException catch (e) {
+      throw 'Failed to scan BLE devices: ${e.message}';
+    }
+  }
+    Future<void> disconnectDevice() async {
+    try {
+      await _channel.invokeMethod('disconnectDevice');
+    } catch (e) {
+      throw Exception('Failed to disconnect device: $e');
+    }
+  }
+Stream<String> scanBleDevicesAsStream(String prefix) {
+  return _eventChannel.receiveBroadcastStream(prefix).map((event) => event.toString());
+}
+
+  // Call the method to ring the device
+  static Future<void> ringDevice() async {
+    try {
+      await _channel.invokeMethod('ringDevice');
+    } on PlatformException catch (e) {
+      print("Failed to ring device: ${e.message}");
+    }
+  }
+  Future<List<String>> scanWifiNetworks(String deviceName, String proofOfPossession) async {
+    try {
+      final List<dynamic> networks = await _channel.invokeMethod('scanWifiNetworks', {
+        'deviceName': deviceName,
+        'proofOfPossession': proofOfPossession,
+      });
+      return networks.cast<String>();
+    } on PlatformException catch (e) {
+      throw 'Failed to scan Wi-Fi networks: ${e.message}';
+    }
+  }
+
+  Future<bool> provisionWifi(
+      String deviceName, String proofOfPossession, String ssid, String passphrase) async {
+    try {
+      final bool result = await _channel.invokeMethod('provisionWifi', {
+        'deviceName': deviceName,
+        'proofOfPossession': proofOfPossession,
+        'ssid': ssid,
+        'passphrase': passphrase,
+      });
+      return result;
+    } on PlatformException catch (e) {
+      throw 'Failed to provision Wi-Fi: ${e.message}';
+    }
+  }
+
+  // KBeacon Methods
   Future<String?> startScan() async {
-    try {
-      final String? result = await _methodChannel.invokeMethod('startScan');
-      return result;
-    } on PlatformException catch (e) {
-      throw 'Failed to start scan: ${e.message}';
-    }
+    return await _channel.invokeMethod('startScan');
   }
 
-  // Stop scanning for beacons
-  Future<String?> stopScan() async {
-    try {
-      final String? result = await _methodChannel.invokeMethod('stopScan');
-      return result;
-    } on PlatformException catch (e) {
-      throw 'Failed to stop scan: ${e.message}';
-    }
-  }
-
-  // Connect to a specific beacon
   Future<void> connectToDevice(String macAddress, String password) async {
     try {
-      await _methodChannel.invokeMethod('connectToDevice', {
+      await _channel.invokeMethod('connectToDevice', {
         'macAddress': macAddress,
         'password': password,
       });
@@ -47,72 +91,52 @@ class KbeaconPlugin {
     }
   }
 
-  // Change the name of the connected device
   Future<void> changeDeviceName(String newName) async {
     try {
-      await _methodChannel.invokeMethod('changeDeviceName', {'newName': newName});
+      await _channel.invokeMethod('changeDeviceName', {'newName': newName});
     } on PlatformException catch (e) {
       throw 'Failed to change device name: ${e.message}';
     }
   }
 
-  // Disconnect from the connected device
-  Future<void> disconnectDevice() async {
-    try {
-      await _methodChannel.invokeMethod('disconnectDevice');
-    } on PlatformException catch (e) {
-      throw 'Failed to disconnect device: ${e.message}';
-    }
-  }
-
-  // Stream of beacon scan results
-  Stream<List<Beacon>> get scanResultsStream {
-    return _eventChannel.receiveBroadcastStream().map((event) {
-      if (event is Map && event['onScanResult'] != null) {
-        List<dynamic> beaconList = event['onScanResult'];
-        return beaconList
-            .map((beaconMap) => Beacon.fromMap(Map<String, dynamic>.from(beaconMap)))
-            .toList();
+ void listenToScanResults(
+      Function(List<String> beacons) onResult,
+      Function(String errorMessage) onScanFailed,
+      Function(String bleState) onBleStateChange) {
+    _channel.setMethodCallHandler((MethodCall call) async {
+      if (call.method == "onScanResult") {
+        List<String> beacons = List<String>.from(call.arguments);
+        onResult(beacons);
+      } else if (call.method == "onScanFailed") {
+        String errorMessage = call.arguments as String;
+        onScanFailed(errorMessage);
+      } else if (call.method == "onBleStateChange") {
+        String bleState = call.arguments as String;
+        onBleStateChange(bleState);
       }
-      return [];
     });
   }
 
-  // Stream of BLE state changes
-  Stream<String> get bleStateStream {
-    return _eventChannel.receiveBroadcastStream().map((event) {
-      if (event is Map && event['onBleStateChange'] != null) {
-        return event['onBleStateChange'] as String;
-      }
-      return 'unknown';
-    });
+  Stream<Map<String, dynamic>> get beaconEventsStream {
+    return _eventChannel.receiveBroadcastStream().map((event) => Map<String, dynamic>.from(event));
   }
-
-  // Optional: Combined event listener for multiple event types
-  void listenToEvents({
-    required Function(List<Beacon>) onScanResult,
-    required Function(String) onBleStateChange,
-    required Function(String) onScanFailed,
+   // Refactored listenToBeaconEvents
+  void listenToBeaconEvents({
+    required Function(List<Map<String, dynamic>> beacons) onScanResult,
+    required Function(String bleState) onBleStateChange,
   }) {
-    _eventChannel.receiveBroadcastStream().listen((event) {
-      if (event is Map) {
-        if (event['onScanResult'] != null) {
-          List<dynamic> beaconList = event['onScanResult'];
-          List<Beacon> beacons = beaconList
-              .map((beaconMap) => Beacon.fromMap(Map<String, dynamic>.from(beaconMap)))
-              .toList();
-          onScanResult(beacons);
-        }
-        if (event['onBleStateChange'] != null) {
-          String bleState = event['onBleStateChange'];
-          onBleStateChange(bleState);
-        }
-        // Handle other event types if necessary
+    beaconEventsStream.listen((event) {
+      if (event.containsKey('onScanResult')) {
+        List<Map<String, dynamic>> beacons = List<Map<String, dynamic>>.from(event['onScanResult']);
+        onScanResult(beacons);
       }
+      if (event.containsKey('onBleStateChange')) {
+        String bleState = event['onBleStateChange'];
+        onBleStateChange(bleState);
+      }
+      // Handle other event types if necessary
     }, onError: (error) {
-      onScanFailed(error.toString());
+      // Handle stream errors if necessary
     });
   }
-
-  // Additional methods as needed
 }
