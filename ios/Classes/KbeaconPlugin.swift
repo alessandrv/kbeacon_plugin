@@ -115,25 +115,34 @@ extension KbeaconPlugin: ConnStateDelegate {
 }
 
 extension KbeaconPlugin: KBeaconMgrDelegate {
-     public func onBeaconDiscovered(beacons: [KBeacon]) {
+      public func onBeaconDiscovered(beacons: [KBeacon]) {
         print("Beacons discovered: \(beacons.count)")
-        var beaconList: [String] = []
+        var beaconList: [[String: Any]] = []
         
         for beacon in beacons {
-            let mac = beacon.mac ?? "unknown"
+            let uuid = beacon.uuidString ?? "unknown" // Use UUID instead of MAC
             let rssi = beacon.rssi
             let name = beacon.name ?? "Unknown"
             
-            // Format beacon info string to match Android format
-            let beaconInfo = "MAC: \(mac), RSSI: \(rssi), Name: \(name)"
+            // Prepare beacon info dictionary
+            var beaconInfo: [String: Any] = [
+                "macAddress": uuid, // Use UUID as macAddress for compatibility
+                "rssi": rssi,
+                "name": name
+            ]
+            
+            // Add additional information if needed
+            // For example, you can include other fields like temperature, humidity, etc.
+            
             beaconList.append(beaconInfo)
             
             print("Discovered Beacon: \(beaconInfo)")
         }
         
-        // Send array of strings through event sink
+        // Send array of beacon dictionaries through event sink
         eventSink?(["onScanResult": beaconList])
     }
+    
     
     
     public func onCentralBleStateChange(newState: BLECentralMgrState) {
@@ -177,16 +186,18 @@ extension KbeaconPlugin {
     }
     
     // Connect to a specific KBeacon device
-    private func connectToDevice(macAddress: String, password: String, result: @escaping FlutterResult) {
-        print("Attempting to connect to device \(macAddress) with password \(password)")
-        guard let beacon = beaconManager.beacons[macAddress] else {
-            print("Device with MAC \(macAddress) not found")
-            result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device with MAC \(macAddress) not found", details: nil))
+
+    // Update connection methods to use UUID
+    private func connectToDevice(uuid: String, password: String, result: @escaping FlutterResult) {
+        print("Attempting to connect to device \(uuid) with password \(password)")
+        guard let beacon = beaconManager.beacons.first(where: { $0.uuidString == uuid }) else {
+            print("Device with UUID \(uuid) not found")
+            result(FlutterError(code: "DEVICE_NOT_FOUND", message: "Device with UUID \(uuid) not found", details: nil))
             return
         }
         
         // Store the result to be called in the delegate
-        connectionResults[macAddress] = result
+        connectionResults[uuid] = result
         
         // Set self as the delegate to receive connection state changes
         beacon.delegate = self
@@ -195,13 +206,14 @@ extension KbeaconPlugin {
         let connectSuccess = beacon.connect(password, timeout: 5000, delegate: self)
         print("Connection initiation success: \(connectSuccess)")
         if connectSuccess {
-            print("Initiated connection to device \(macAddress)")
-            result("Connecting to device \(macAddress)")
+            print("Initiated connection to device \(uuid)")
+            result("Connecting to device \(uuid)")
         } else {
-            print("Failed to initiate connection to device \(macAddress)")
+            print("Failed to initiate connection to device \(uuid)")
             result(FlutterError(code: "CONNECT_INIT_FAILED", message: "Failed to initiate connection", details: nil))
         }
     }
+    
     
     // Change the device name
     private func changeDeviceName(newName: String, result: @escaping FlutterResult) {
