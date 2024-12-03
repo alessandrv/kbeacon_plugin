@@ -1,35 +1,6 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
-class Beacon {
-  final String mac;
-  final int rssi;
-  final String name;
-  final String uuid;
-  final int? major;
-  final int? minor;
-  // Add other properties as needed
-
-  Beacon({
-    required this.mac,
-    required this.rssi,
-    required this.name,
-    required this.uuid,
-    this.major,
-    this.minor,
-  });
-
-  factory Beacon.fromMap(Map<String, dynamic> map) {
-    return Beacon(
-      mac: map['mac'] ?? 'unknown',
-      rssi: map['rssi'] ?? 0,
-      name: map['name'] ?? 'Unknown',
-      uuid: map['uuid'] ?? 'unknown',
-      major: map['major'],
-      minor: map['minor'],
-      // Assign other properties
-    );
-  }
-}
+import 'bacon.dart';
 
 class KbeaconPlugin {
   static const MethodChannel _methodChannel = MethodChannel('kbeacon_plugin');
