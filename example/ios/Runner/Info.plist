@@ -10,6 +10,8 @@
 <string>Location access is required to use Bluetooth features.</string>
 <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 <string>Location access is required to use Bluetooth features.</string>
+<key>NSCameraUsageDescription</key>
+<string>Uses the camera to scan QR codes to connect faster to the devices</string>
 <key>UIBackgroundModes</key>
 <array>
     <string>bluetooth-central</string>
