@@ -116,27 +116,4 @@ Stream<String> scanBleDevicesAsStream(String prefix) {
       }
     });
   }
-
-  Stream<Map<String, dynamic>> get beaconEventsStream {
-    return _eventChannel.receiveBroadcastStream().map((event) => Map<String, dynamic>.from(event));
-  }
-   // Refactored listenToBeaconEvents
-  void listenToBeaconEvents({
-    required Function(List<Map<String, dynamic>> beacons) onScanResult,
-    required Function(String bleState) onBleStateChange,
-  }) {
-    beaconEventsStream.listen((event) {
-      if (event.containsKey('onScanResult')) {
-        List<Map<String, dynamic>> beacons = List<Map<String, dynamic>>.from(event['onScanResult']);
-        onScanResult(beacons);
-      }
-      if (event.containsKey('onBleStateChange')) {
-        String bleState = event['onBleStateChange'];
-        onBleStateChange(bleState);
-      }
-      // Handle other event types if necessary
-    }, onError: (error) {
-      // Handle stream errors if necessary
-    });
-  }
 }

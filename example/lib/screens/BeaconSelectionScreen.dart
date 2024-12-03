@@ -33,42 +33,48 @@ class _BeaconSelectionScreenState extends State<BeaconSelectionScreen> {
     _startBeaconCleanup();
   }
   void _startScanning() async {
-  await _kbeaconPlugin.startScan();
-  _kbeaconPlugin.listenToBeaconEvents(
-    onScanResult: (List<Map<String, dynamic>> beacons) {
-      setState(() {
-        _updateBeacons(beacons);
-      });
-    },
-    onBleStateChange: (String bleState) {
-      setState(() {
-        _bleState = bleState;
-      });
-    },
-  );
-}
-
-
-void _updateBeacons(List<Map<String, dynamic>> beacons) {
-  final now = DateTime.now();
-  for (var beacon in beacons) {
-    final macAddress = beacon['macAddress'] ?? 'unknown';
-    final rssi = beacon['rssi']?.toString() ?? 'unknown';
-    final name = beacon['name'] ?? 'Unknown';
-
-    // Store beacon data
-    _beaconMap[macAddress] = {
-      "macAddress": macAddress,
-      "rssi": rssi,
-      "name": name,
-      "lastSeen": now,
-    };
+    await _kbeaconPlugin.startScan();
+    _kbeaconPlugin.listenToScanResults(
+      (List<String> beacons) {
+        setState(() {
+          _updateBeacons(beacons);
+        });
+      },
+      (String errorMessage) {
+        setState(() {
+          _error = errorMessage;
+        });
+      },
+      (String bleState) {
+        setState(() {
+          _bleState = bleState;
+        });
+      },
+    );
   }
 
-  // Update the visible beacon list
-  _beacons = _beaconMap.keys.toList();
-}
+  void _updateBeacons(List<String> beacons) {
+    final now = DateTime.now();
+    for (var beacon in beacons) {
+      // Extract the MAC address and any additional information
+      final beaconParts = beacon.split(", ");
+      if (beaconParts.length < 2) continue; // Ensure enough parts
+      final macAddress = beaconParts[0].split(": ")[1]; // "MAC: <address>"
+      final rssi = beaconParts[1].split(": ")[1]; // "RSSI: <value>"
+      final name = beaconParts.length > 2 ? beaconParts[2].split(": ")[1] : "Unknown"; // "Name: <name>"
 
+      // Store beacon data
+      _beaconMap[macAddress] = {
+        "macAddress": macAddress,
+        "rssi": rssi,
+        "name": name,
+        "lastSeen": now,
+      };
+    }
+
+    // Update the visible beacon list
+    _beacons = _beaconMap.keys.toList();
+  }
 
   void _startBeaconCleanup() {
     Timer.periodic(Duration(seconds: 1), (timer) {
